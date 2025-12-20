@@ -58,13 +58,13 @@ jobs:
       - run: cargo build --release
       - name: Upload binary (Unix)
         if: matrix.os != 'windows-latest'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: iam-analyzer-${{ matrix.os }}
           path: target/release/iam-analyzer
       - name: Upload binary (Windows)
         if: matrix.os == 'windows-latest'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: iam-analyzer-${{ matrix.os }}
           path: target/release/iam-analyzer.exe
