@@ -1,0 +1,23 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "IPRestriction",
+            "Effect": "Deny",
+            "Principal": "*",
+            "Action": "s3:*",
+            "Resource": [
+                "arn:aws:s3:::ip-restricted-bucket",
+                "arn:aws:s3:::ip-restricted-bucket/*"
+            ],
+            "Condition": {
+                "NotIpAddress": {
+                    "aws:SourceIp": [
+                        "192.0.2.0/24",
+                        "203.0.113.0/24"
+                    ]
+                }
+            }
+        }
+    ]
+}

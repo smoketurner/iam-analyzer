@@ -1,0 +1,31 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "ServiceBoundaries",
+            "Effect": "Allow",
+            "Action": [
+                "s3:*",
+                "cloudwatch:*",
+                "ec2:*",
+                "dynamodb:*"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "DenyS3Logs",
+            "Effect": "Deny",
+            "Action": "s3:*",
+            "Resource": [
+                "arn:aws:s3:::logs",
+                "arn:aws:s3:::logs/*"
+            ]
+        },
+        {
+            "Sid": "DenyEC2Production",
+            "Effect": "Deny",
+            "Action": "ec2:*",
+            "Resource": "arn:aws:ec2:*:*:instance/i-prod*"
+        }
+    ]
+}

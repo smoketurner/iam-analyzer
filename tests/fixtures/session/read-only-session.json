@@ -1,0 +1,22 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "ReadOnlyAccess",
+            "Effect": "Allow",
+            "Action": [
+                "s3:Get*",
+                "s3:List*",
+                "ec2:Describe*",
+                "dynamodb:Get*",
+                "dynamodb:Scan",
+                "dynamodb:Query",
+                "dynamodb:BatchGet*",
+                "cloudwatch:Get*",
+                "cloudwatch:List*",
+                "cloudwatch:Describe*"
+            ],
+            "Resource": "*"
+        }
+    ]
+}

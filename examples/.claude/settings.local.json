@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep:*)",
+      "Bash(cargo:*)",
+      "Bash(rustc:*)",
+      "Bash(wc:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:servicereference.us-east-1.amazonaws.com)"
+    ]
+  }
+}

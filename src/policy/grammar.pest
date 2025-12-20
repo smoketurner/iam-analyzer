@@ -1,0 +1,157 @@
+// PEG grammar for IAM policy action patterns
+//
+// Action format: service:action_name
+// Examples:
+//   s3:GetObject
+//   s3:*
+//   ec2:Describe*
+//   *
+
+// Whitespace (not significant in patterns)
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+
+// Basic character classes
+alpha = { ASCII_ALPHA }
+digit = { ASCII_DIGIT }
+alphanumeric = { alpha | digit }
+
+// Wildcard characters
+wildcard_star = { "*" }
+wildcard_question = { "?" }
+wildcard = { wildcard_star | wildcard_question }
+
+// Service name: lowercase letters, digits, hyphens
+// Examples: s3, ec2, iam, lambda, dynamodb, api-gateway
+service_char = { ASCII_ALPHA_LOWER | digit | "-" }
+service_name = { service_char+ }
+service_pattern = { (service_char | wildcard)+ }
+
+// Action name: letters, digits, wildcards
+// Examples: GetObject, Describe*, Put*, *
+action_char = { alphanumeric }
+action_name = { action_char+ }
+action_pattern = { (action_char | wildcard)+ }
+
+// Full action pattern: service:action
+// Examples: s3:GetObject, ec2:*, *
+full_action = { service_pattern ~ ":" ~ action_pattern }
+wildcard_all = { "*" }
+
+// An action can be a full pattern or just a wildcard
+action = { full_action | wildcard_all }
+
+// For parsing multiple actions
+action_list = { action ~ ("," ~ action)* }
+
+// Condition operator components
+// Format: [ForAllValues:|ForAnyValue:]BaseOperator[IfExists]
+// Examples:
+//   StringEquals
+//   StringEqualsIfExists
+//   ForAllValues:StringEquals
+//   ForAnyValue:StringLikeIfExists
+
+// Set operator prefix
+for_all_values = { "ForAllValues:" }
+for_any_value = { "ForAnyValue:" }
+set_operator = { for_all_values | for_any_value }
+
+// If exists suffix
+if_exists = { "IfExists" }
+
+// Base operators (case-sensitive as per AWS)
+// String operators
+string_equals = { "StringEquals" }
+string_not_equals = { "StringNotEquals" }
+string_equals_ignore_case = { "StringEqualsIgnoreCase" }
+string_not_equals_ignore_case = { "StringNotEqualsIgnoreCase" }
+string_like = { "StringLike" }
+string_not_like = { "StringNotLike" }
+
+// Numeric operators
+numeric_equals = { "NumericEquals" }
+numeric_not_equals = { "NumericNotEquals" }
+numeric_less_than = { "NumericLessThan" }
+numeric_less_than_equals = { "NumericLessThanEquals" }
+numeric_greater_than = { "NumericGreaterThan" }
+numeric_greater_than_equals = { "NumericGreaterThanEquals" }
+
+// Date operators
+date_equals = { "DateEquals" }
+date_not_equals = { "DateNotEquals" }
+date_less_than = { "DateLessThan" }
+date_less_than_equals = { "DateLessThanEquals" }
+date_greater_than = { "DateGreaterThan" }
+date_greater_than_equals = { "DateGreaterThanEquals" }
+
+// Boolean operator
+bool_op = { "Bool" }
+
+// Binary operator
+binary_equals = { "BinaryEquals" }
+
+// IP address operators
+ip_address = { "IpAddress" }
+not_ip_address = { "NotIpAddress" }
+
+// ARN operators
+arn_equals = { "ArnEquals" }
+arn_like = { "ArnLike" }
+arn_not_equals = { "ArnNotEquals" }
+arn_not_like = { "ArnNotLike" }
+
+// Null operator
+null_op = { "Null" }
+
+// All base operators
+base_operator = {
+    // String (longer matches first)
+    string_equals_ignore_case |
+    string_not_equals_ignore_case |
+    string_not_equals |
+    string_equals |
+    string_not_like |
+    string_like |
+    // Numeric (longer matches first)
+    numeric_not_equals |
+    numeric_equals |
+    numeric_less_than_equals |
+    numeric_less_than |
+    numeric_greater_than_equals |
+    numeric_greater_than |
+    // Date (longer matches first)
+    date_not_equals |
+    date_equals |
+    date_less_than_equals |
+    date_less_than |
+    date_greater_than_equals |
+    date_greater_than |
+    // Boolean
+    bool_op |
+    // Binary
+    binary_equals |
+    // IP
+    not_ip_address |
+    ip_address |
+    // ARN (longer matches first)
+    arn_not_equals |
+    arn_not_like |
+    arn_equals |
+    arn_like |
+    // Null
+    null_op
+}
+
+// Full condition operator
+condition_operator = { set_operator? ~ base_operator ~ if_exists? }
+
+// Policy variable format: ${variable_name}
+// Examples: ${aws:username}, ${aws:PrincipalTag/department}
+variable_char = { alphanumeric | ":" | "/" | "-" | "_" }
+variable_name = { variable_char+ }
+policy_variable = { "${" ~ variable_name ~ "}" }
+
+// For parsing strings that may contain policy variables
+text_char = { !("$" | "{" | "}") ~ ANY }
+text_segment = { text_char+ }
+variable_string = { (text_segment | policy_variable)* }

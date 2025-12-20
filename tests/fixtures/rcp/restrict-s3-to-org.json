@@ -1,0 +1,20 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "RestrictS3ToOrg",
+            "Effect": "Deny",
+            "Principal": "*",
+            "Action": "s3:*",
+            "Resource": "*",
+            "Condition": {
+                "StringNotEquals": {
+                    "aws:PrincipalOrgID": "o-exampleorgid"
+                },
+                "Bool": {
+                    "aws:PrincipalIsAWSService": "false"
+                }
+            }
+        }
+    ]
+}

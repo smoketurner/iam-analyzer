@@ -1,0 +1,66 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "CreateOrChangeOnlyWithBoundary",
+            "Effect": "Allow",
+            "Action": [
+                "iam:AttachUserPolicy",
+                "iam:CreateUser",
+                "iam:DeleteUserPolicy",
+                "iam:DetachUserPolicy",
+                "iam:PutUserPermissionsBoundary",
+                "iam:PutUserPolicy"
+            ],
+            "Resource": "*",
+            "Condition": {
+                "StringEquals": {
+                    "iam:PermissionsBoundary": "arn:aws:iam::123456789012:policy/DeveloperBoundary"
+                }
+            }
+        },
+        {
+            "Sid": "CloudWatchAndOtherIAMTasks",
+            "Effect": "Allow",
+            "Action": [
+                "cloudwatch:*",
+                "iam:CreateAccessKey",
+                "iam:CreateGroup",
+                "iam:CreateLoginProfile",
+                "iam:CreatePolicy",
+                "iam:DeleteGroup",
+                "iam:DeletePolicy",
+                "iam:DeletePolicyVersion",
+                "iam:DeleteUser",
+                "iam:GetAccountPasswordPolicy",
+                "iam:GetGroup",
+                "iam:GetLoginProfile",
+                "iam:GetPolicy",
+                "iam:GetPolicyVersion",
+                "iam:GetUser",
+                "iam:GetUserPolicy",
+                "iam:ListUsers",
+                "iam:ListPolicies",
+                "iam:ListGroups"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "NoBoundaryPolicyEdit",
+            "Effect": "Deny",
+            "Action": [
+                "iam:CreatePolicyVersion",
+                "iam:DeletePolicy",
+                "iam:DeletePolicyVersion",
+                "iam:SetDefaultPolicyVersion"
+            ],
+            "Resource": "arn:aws:iam::123456789012:policy/DeveloperBoundary"
+        },
+        {
+            "Sid": "NoBoundaryUserDelete",
+            "Effect": "Deny",
+            "Action": "iam:DeleteUserPermissionsBoundary",
+            "Resource": "*"
+        }
+    ]
+}

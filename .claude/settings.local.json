@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:corrode.dev)",
+      "WebFetch(domain:blog.logrocket.com)",
+      "Bash(cargo test:*)",
+      "Bash(cargo build:*)",
+      "Bash(cargo run:*)",
+      "Bash(cargo fix:*)",
+      "Bash(/Users/jplock/envs/git/iam-analyzer/target/release/iam-analyzer:*)",
+      "Bash(./target/release/iam-analyzer:*)",
+      "Bash(cat:*)",
+      "Bash(wc:*)",
+      "Bash(find:*)",
+      "Bash(chmod:*)",
+      "Bash(/Users/jplock/envs/git/iam-analyzer/examples/demo.sh)"
+    ]
+  }
+}
