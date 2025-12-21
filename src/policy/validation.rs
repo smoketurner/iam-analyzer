@@ -475,13 +475,13 @@ pub fn validate_against_service_definitions(
 
             // Validate condition keys
             if let Some(conditions) = &statement.condition {
-                for (_operator, key_values) in conditions {
+                for key_values in conditions.values() {
                     for key in key_values.keys() {
                         let result = validate_condition_key(key, request_action, loader)?;
-                        if !result.valid {
-                            if let Some(error) = result.error {
-                                errors.push(error);
-                            }
+                        if !result.valid
+                            && let Some(error) = result.error
+                        {
+                            errors.push(error);
                         }
                     }
                 }
@@ -545,11 +545,11 @@ fn levenshtein_distance(a: &str, b: &str) -> usize {
 
     let mut matrix = vec![vec![0; b_len + 1]; a_len + 1];
 
-    for i in 0..=a_len {
-        matrix[i][0] = i;
+    for (i, row) in matrix.iter_mut().enumerate() {
+        row[0] = i;
     }
-    for j in 0..=b_len {
-        matrix[0][j] = j;
+    for (j, val) in matrix[0].iter_mut().enumerate() {
+        *val = j;
     }
 
     for i in 1..=a_len {

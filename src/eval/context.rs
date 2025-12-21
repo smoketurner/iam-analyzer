@@ -836,7 +836,7 @@ impl RequestContextBuilder {
             || self
                 .principal_arn
                 .as_ref()
-                .map_or(false, |arn| super::principal::is_service_linked_role(arn));
+                .is_some_and(|arn| super::principal::is_service_linked_role(arn));
 
         // Populate aws:PrincipalType based on principal ARN
         let mut principal_ctx = self.principal_ctx;

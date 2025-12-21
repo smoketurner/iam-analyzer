@@ -104,10 +104,10 @@ fn resolve_variable(var_name: &str, context: &RequestContext) -> Option<String> 
     // Special handling for aws:username - derive from principal ARN if not set
     if lower_name == "aws:username" {
         // Try context bags first
-        if let Some(values) = context.get_condition_value("aws:username") {
-            if let Some(first) = values.into_iter().next() {
-                return Some(first);
-            }
+        if let Some(values) = context.get_condition_value("aws:username")
+            && let Some(first) = values.into_iter().next()
+        {
+            return Some(first);
         }
         // Fall back to deriving from principal ARN (looked up from bag)
         return context
@@ -134,12 +134,11 @@ fn derive_username_from_arn(arn: &str) -> Option<String> {
         return Some(user_part.1.to_string());
     }
     // Assumed role: arn:aws:sts::123456789012:assumed-role/RoleName/SessionName
-    if arn.contains("assumed-role/") {
-        if let Some(role_part) = arn.rsplit_once("assumed-role/") {
-            if let Some(session_name) = role_part.1.rsplit_once('/') {
-                return Some(session_name.1.to_string());
-            }
-        }
+    if arn.contains("assumed-role/")
+        && let Some(role_part) = arn.rsplit_once("assumed-role/")
+        && let Some(session_name) = role_part.1.rsplit_once('/')
+    {
+        return Some(session_name.1.to_string());
     }
     // Federated user: arn:aws:sts::123456789012:federated-user/UserName
     if let Some(fed_part) = arn.rsplit_once("federated-user/") {

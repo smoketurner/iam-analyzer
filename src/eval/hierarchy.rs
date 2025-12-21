@@ -27,6 +27,9 @@ use super::matchers::statement_matches;
 use crate::error::Result;
 use crate::policy::Effect;
 
+/// Result type for checking explicit denies.
+type DenyResult = Result<Option<(String, Option<String>, Vec<ReasoningStep>)>>;
+
 /// Result of hierarchy evaluation.
 #[derive(Debug)]
 pub struct HierarchyResult {
@@ -280,7 +283,7 @@ pub fn check_explicit_deny(
     policies: &[NamedPolicy],
     context: &RequestContext,
     policy_type: PolicyType,
-) -> Result<Option<(String, Option<String>, Vec<ReasoningStep>)>> {
+) -> DenyResult {
     let mut reasoning = Vec::new();
 
     for named_policy in policies {

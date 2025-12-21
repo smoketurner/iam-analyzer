@@ -303,8 +303,8 @@ fn parse_date_to_epoch(s: &str) -> Result<i64> {
     }
 
     // Try parsing with Z suffix by replacing Z with +00:00 for RFC3339
-    if s.ends_with('Z') {
-        let rfc3339 = format!("{}+00:00", &s[..s.len() - 1]);
+    if let Some(stripped) = s.strip_suffix('Z') {
+        let rfc3339 = format!("{}+00:00", stripped);
         if let Ok(dt) = DateTime::<FixedOffset>::parse_from_rfc3339(&rfc3339) {
             return Ok(dt.timestamp());
         }

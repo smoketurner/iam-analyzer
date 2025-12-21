@@ -138,9 +138,7 @@ fn load_policy_with_validation(path: &Path, show_warnings: bool) -> Result<Named
     let issues = validate_policy(&policy);
     if !issues.is_empty() {
         for issue in &issues {
-            if issue.severity == Severity::Error {
-                eprintln!("Policy '{}': {}", name, issue);
-            } else if show_warnings {
+            if issue.severity == Severity::Error || show_warnings {
                 eprintln!("Policy '{}': {}", name, issue);
             }
         }
@@ -198,22 +196,20 @@ fn build_policy_set(args: &Args) -> Result<PolicySet> {
     if let Some(config_path) = &args.organization_config {
         let (scp_hierarchy, rcp_hierarchy) = load_organization_config(config_path)?;
 
-        if let Some(hierarchy) = scp_hierarchy {
-            if !hierarchy.root_scps.is_empty()
+        if let Some(hierarchy) = scp_hierarchy
+            && (!hierarchy.root_scps.is_empty()
                 || !hierarchy.ou_scps.is_empty()
-                || !hierarchy.account_scps.is_empty()
-            {
-                policies.scp_hierarchy = Some(hierarchy);
-            }
+                || !hierarchy.account_scps.is_empty())
+        {
+            policies.scp_hierarchy = Some(hierarchy);
         }
 
-        if let Some(hierarchy) = rcp_hierarchy {
-            if !hierarchy.root_scps.is_empty()
+        if let Some(hierarchy) = rcp_hierarchy
+            && (!hierarchy.root_scps.is_empty()
                 || !hierarchy.ou_scps.is_empty()
-                || !hierarchy.account_scps.is_empty()
-            {
-                policies.rcp_hierarchy = Some(hierarchy);
-            }
+                || !hierarchy.account_scps.is_empty())
+        {
+            policies.rcp_hierarchy = Some(hierarchy);
         }
     }
 

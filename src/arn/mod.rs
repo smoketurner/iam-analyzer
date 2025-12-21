@@ -4,8 +4,8 @@
 //! - [`Arn`] - A parsed, validated ARN
 //! - [`ArnPattern`] - A pattern for matching ARNs with wildcards
 
-mod arn;
 pub mod pattern;
+mod types;
 
-pub use arn::Arn;
 pub use pattern::{ArnPattern, glob_match};
+pub use types::Arn;

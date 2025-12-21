@@ -97,10 +97,10 @@ impl ServiceCache {
                 source: e,
             })?;
 
-            if let Some(name) = entry.path().file_stem() {
-                if let Some(name_str) = name.to_str() {
-                    services.push(name_str.to_string());
-                }
+            if let Some(name) = entry.path().file_stem()
+                && let Some(name_str) = name.to_str()
+            {
+                services.push(name_str.to_string());
             }
         }
 

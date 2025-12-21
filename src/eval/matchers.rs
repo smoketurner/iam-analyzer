@@ -356,10 +356,10 @@ fn action_matches(action_block: &ActionBlock, request_action: &str) -> Result<bo
         }
 
         // Parse and match
-        if let Ok(pattern) = ActionPattern::parse(pattern_str) {
-            if pattern.matches(request_action) {
-                return Ok(true);
-            }
+        if let Ok(pattern) = ActionPattern::parse(pattern_str)
+            && pattern.matches(request_action)
+        {
+            return Ok(true);
         }
     }
 
@@ -469,10 +469,10 @@ fn principal_type_matches(
 
                     // If policy specifies arn:aws:iam::ACCOUNT:root, it matches ANY principal from that account
                     // Parse the root ARN pattern: arn:aws:iam::ACCOUNT:root or arn:aws-*:iam::ACCOUNT:root
-                    if let Some(root_account) = extract_root_account_from_arn(value) {
-                        if root_account == *account {
-                            return Ok(true);
-                        }
+                    if let Some(root_account) = extract_root_account_from_arn(value)
+                        && root_account == *account
+                    {
+                        return Ok(true);
                     }
                 }
             }

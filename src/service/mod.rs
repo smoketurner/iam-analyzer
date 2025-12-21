@@ -62,10 +62,10 @@ impl ServiceLoader {
     /// - Service cannot be fetched (network error, unknown service)
     pub fn load(&self, service_name: &str) -> Result<Option<ServiceDefinition>> {
         // Try to load from cache first
-        if let Some(cache) = &self.cache {
-            if let Some(service) = cache.load(service_name)? {
-                return Ok(Some(service));
-            }
+        if let Some(cache) = &self.cache
+            && let Some(service) = cache.load(service_name)?
+        {
+            return Ok(Some(service));
         }
 
         // If offline, we can't fetch

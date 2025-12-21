@@ -11,6 +11,9 @@ use super::matchers::statement_matches;
 use crate::error::Result;
 use crate::policy::{Effect, Policy};
 
+/// Result type for checking explicit denies across policy types.
+type DenyCheckResult = Result<Option<(PolicyType, String, Option<String>, Vec<ReasoningStep>)>>;
+
 /// A named policy with its source file name.
 #[derive(Debug, Clone)]
 pub struct NamedPolicy {
@@ -335,23 +338,21 @@ impl EvaluationEngine {
         context: &RequestContext,
         policies: &PolicySet,
         is_anonymous: bool,
-    ) -> Result<Option<(PolicyType, String, Option<String>, Vec<ReasoningStep>)>> {
+    ) -> DenyCheckResult {
         // Check SCP hierarchy for denies (skip for anonymous - no principal in org)
-        if !is_anonymous {
-            if let Some(hierarchy) = &policies.scp_hierarchy {
-                let all_scps: Vec<_> = hierarchy
-                    .root_scps
-                    .iter()
-                    .chain(hierarchy.ou_scps.iter().flat_map(|ou| &ou.policies))
-                    .chain(&hierarchy.account_scps)
-                    .cloned()
-                    .collect();
+        if !is_anonymous && let Some(hierarchy) = &policies.scp_hierarchy {
+            let all_scps: Vec<_> = hierarchy
+                .root_scps
+                .iter()
+                .chain(hierarchy.ou_scps.iter().flat_map(|ou| &ou.policies))
+                .chain(&hierarchy.account_scps)
+                .cloned()
+                .collect();
 
-                if let Some((policy, sid, reasoning)) =
-                    check_explicit_deny(&all_scps, context, PolicyType::Scp)?
-                {
-                    return Ok(Some((PolicyType::Scp, policy, sid, reasoning)));
-                }
+            if let Some((policy, sid, reasoning)) =
+                check_explicit_deny(&all_scps, context, PolicyType::Scp)?
+            {
+                return Ok(Some((PolicyType::Scp, policy, sid, reasoning)));
             }
         }
 
@@ -382,14 +383,14 @@ impl EvaluationEngine {
         }
 
         // Check identity policies (skip for anonymous - no identity)
-        if !is_anonymous {
-            if let Some((policy, sid, reasoning)) = check_explicit_deny(
+        if !is_anonymous
+            && let Some((policy, sid, reasoning)) = check_explicit_deny(
                 &policies.identity_policies,
                 context,
                 PolicyType::IdentityBased,
-            )? {
-                return Ok(Some((PolicyType::IdentityBased, policy, sid, reasoning)));
-            }
+            )?
+        {
+            return Ok(Some((PolicyType::IdentityBased, policy, sid, reasoning)));
         }
 
         // Check resource policies (applies to anonymous)
@@ -402,30 +403,30 @@ impl EvaluationEngine {
         }
 
         // Check permission boundaries (skip for anonymous - no principal)
-        if !is_anonymous {
-            if let Some((policy, sid, reasoning)) = check_explicit_deny(
+        if !is_anonymous
+            && let Some((policy, sid, reasoning)) = check_explicit_deny(
                 &policies.permission_boundaries,
                 context,
                 PolicyType::PermissionBoundary,
-            )? {
-                return Ok(Some((
-                    PolicyType::PermissionBoundary,
-                    policy,
-                    sid,
-                    reasoning,
-                )));
-            }
+            )?
+        {
+            return Ok(Some((
+                PolicyType::PermissionBoundary,
+                policy,
+                sid,
+                reasoning,
+            )));
         }
 
         // Check session policies (skip for anonymous - no session)
-        if !is_anonymous {
-            if let Some((policy, sid, reasoning)) = check_explicit_deny(
+        if !is_anonymous
+            && let Some((policy, sid, reasoning)) = check_explicit_deny(
                 &policies.session_policies,
                 context,
                 PolicyType::SessionPolicy,
-            )? {
-                return Ok(Some((PolicyType::SessionPolicy, policy, sid, reasoning)));
-            }
+            )?
+        {
+            return Ok(Some((PolicyType::SessionPolicy, policy, sid, reasoning)));
         }
 
         Ok(None)

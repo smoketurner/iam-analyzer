@@ -144,7 +144,7 @@ impl EvaluationResult {
         // Find the deciding reasoning step
         let deciding_step = self.reasoning.iter().find(|step| {
             step.matched
-                && step.effect.map_or(false, |e| match self.decision {
+                && step.effect.is_some_and(|e| match self.decision {
                     Decision::Allow => e == crate::policy::Effect::Allow,
                     Decision::ExplicitDeny => e == crate::policy::Effect::Deny,
                     Decision::ImplicitDeny => false,
