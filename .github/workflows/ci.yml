@@ -47,6 +47,10 @@ jobs:
   build:
     name: Build Release (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    permissions:
+      id-token: write
+      contents: read
+      attestations: write
     strategy:
       fail-fast: false
       matrix:
@@ -62,12 +66,22 @@ jobs:
         with:
           name: iam-analyzer-${{ matrix.os }}
           path: target/release/iam-analyzer
+      - name: Attest binary (Unix)
+        if: matrix.os != 'windows-latest'
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: target/release/iam-analyzer
       - name: Upload binary (Windows)
         if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v6
         with:
           name: iam-analyzer-${{ matrix.os }}
           path: target/release/iam-analyzer.exe
+      - name: Attest binary (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: target/release/iam-analyzer.exe
 
   demo:
     name: Run Demo
