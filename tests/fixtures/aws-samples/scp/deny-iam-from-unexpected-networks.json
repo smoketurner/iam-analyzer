@@ -1,0 +1,44 @@
+{
+    "_attribution": {
+        "source": "https://github.com/aws-samples/service-control-policy-examples",
+        "license": "Apache-2.0",
+        "copyright": "Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.",
+        "original_file": "Protect-cloud-platform-resource/Deny-use-of-IAM-user-credentials-from-unexpected-networks.json",
+        "modified": true,
+        "modification_notes": "Simplified NotAction list; added test CIDR ranges"
+    },
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "EnforceNetworkPerimeterOnIAMUsers",
+            "Effect": "Deny",
+            "NotAction": [
+                "neptune-db:*",
+                "kafka-cluster:*",
+                "rds-db:connect"
+            ],
+            "Resource": "*",
+            "Condition": {
+                "BoolIfExists": {
+                    "aws:ViaAWSService": "false"
+                },
+                "NotIpAddressIfExists": {
+                    "aws:SourceIp": [
+                        "10.0.0.0/8",
+                        "172.16.0.0/12"
+                    ]
+                },
+                "StringNotEqualsIfExists": {
+                    "aws:SourceVpc": [
+                        "vpc-corporate"
+                    ]
+                },
+                "ArnLike": {
+                    "aws:PrincipalArn": [
+                        "arn:aws:iam::*:user/*"
+                    ]
+                }
+            }
+        }
+    ]
+}

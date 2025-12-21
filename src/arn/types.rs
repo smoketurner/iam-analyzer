@@ -42,6 +42,7 @@ impl Arn {
     /// assert_eq!(arn.account, "123456789012");
     /// assert_eq!(arn.resource, "user/johndoe");
     /// ```
+    #[must_use = "parsing may fail, check the Result"]
     pub fn parse(s: &str) -> Result<Self> {
         let parts: Vec<&str> = s.splitn(6, ':').collect();
 

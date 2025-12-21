@@ -2,7 +2,9 @@
 # IAM Analyzer Demo Script
 # Demonstrates evaluation of all policy types using test fixtures
 
-set -e
+# Note: We don't use 'set -e' because the CLI returns non-zero exit codes
+# for deny decisions (2=EXPLICIT_DENY, 3=IMPLICIT_DENY), which is expected
+# behavior for many demo scenarios.
 
 # Determine script location and project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

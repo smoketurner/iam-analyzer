@@ -31,6 +31,7 @@ impl ActionPattern {
     /// assert_eq!(pattern.service, "*");
     /// assert_eq!(pattern.action, "*");
     /// ```
+    #[must_use = "parsing may fail, check the Result"]
     pub fn parse(s: &str) -> Result<Self> {
         let s = s.trim();
 

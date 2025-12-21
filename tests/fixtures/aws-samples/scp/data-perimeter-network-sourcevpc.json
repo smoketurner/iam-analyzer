@@ -1,0 +1,62 @@
+{
+    "_attribution": {
+        "source": "https://github.com/aws-samples/data-perimeter-policy-examples",
+        "license": "Apache-2.0",
+        "copyright": "Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.",
+        "original_file": "service_control_policies/network_perimeter_sourcevpc_scp.json",
+        "modified": true,
+        "modification_notes": "Simplified placeholders for testing"
+    },
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "EnforceNetworkPerimeterSourceVPC",
+            "Effect": "Deny",
+            "NotAction": [
+                "es:ES*",
+                "neptune-db:*",
+                "kafka-cluster:*",
+                "rds-db:connect"
+            ],
+            "Resource": "*",
+            "Condition": {
+                "BoolIfExists": {
+                    "aws:ViaAWSService": "false"
+                },
+                "NotIpAddressIfExists": {
+                    "aws:SourceIp": [
+                        "10.0.0.0/8"
+                    ]
+                },
+                "StringNotEqualsIfExists": {
+                    "aws:PrincipalTag/dp:exclude:network": "true",
+                    "aws:SourceVpc": [
+                        "vpc-12345678"
+                    ]
+                },
+                "ArnNotLikeIfExists": {
+                    "aws:PrincipalArn": [
+                        "arn:aws:iam::*:role/aws:ec2-infrastructure"
+                    ]
+                },
+                "StringEquals": {
+                    "aws:PrincipalTag/dp:include:network": "true"
+                }
+            }
+        },
+        {
+            "Sid": "SourceVPCRegion",
+            "Effect": "Deny",
+            "Action": "*",
+            "Resource": "*",
+            "Condition": {
+                "StringEquals": {
+                    "aws:SourceVpc": "vpc-useast1"
+                },
+                "StringNotEqualsIfExists": {
+                    "aws:RequestedRegion": "us-east-1"
+                }
+            }
+        }
+    ]
+}

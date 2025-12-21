@@ -1,6 +1,6 @@
 //! Request context for policy evaluation.
 
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 use super::context_bags::{
     ConditionValue, NetworkContext, PrincipalContext, RequestBag, ResourceContext, SessionContext,
@@ -113,13 +113,13 @@ pub struct RequestContext {
     pub source_org_paths: Option<Vec<String>>,
 
     /// Condition context keys and values
-    pub context_keys: HashMap<String, Vec<String>>,
+    pub context_keys: FxHashMap<String, Vec<String>>,
     /// Principal tags
-    pub principal_tags: HashMap<String, String>,
+    pub principal_tags: FxHashMap<String, String>,
     /// Resource tags
-    pub resource_tags: HashMap<String, String>,
+    pub resource_tags: FxHashMap<String, String>,
     /// Request tags (for tag-on-create)
-    pub request_tags: HashMap<String, String>,
+    pub request_tags: FxHashMap<String, String>,
 
     // =========================================================================
     // Context Bags (new architecture - AWS-style)
@@ -237,6 +237,50 @@ fn strip_prefix_case_insensitive<'a>(s: &'a str, prefix: &str) -> Option<&'a str
 }
 
 /// Builder for RequestContext.
+///
+/// # Examples
+///
+/// Data perimeter context with organization and VPC endpoint:
+///
+/// ```
+/// use iam_analyzer::RequestContext;
+///
+/// // Configure a request through a VPC endpoint with org context
+/// let ctx = RequestContext::builder()
+///     .action("s3:GetObject")
+///     .resource("arn:aws:s3:::my-bucket/file.txt")
+///     .principal_arn("arn:aws:iam::123456789012:user/alice")
+///     .principal_org_id("o-myorg12345")
+///     .resource_org_id("o-myorg12345")
+///     .source_vpc("vpc-12345678")
+///     .source_vpce("vpce-1a2b3c4d")
+///     .vpce_org_id("o-myorg12345")
+///     .build()
+///     .unwrap();
+///
+/// assert_eq!(ctx.principal_org_id, Some("o-myorg12345".to_string()));
+/// assert_eq!(ctx.source_vpc, Some("vpc-12345678".to_string()));
+/// ```
+///
+/// Service-specific condition keys for S3 encryption:
+///
+/// ```
+/// use iam_analyzer::RequestContext;
+///
+/// // Request with encryption header required by S3 policy
+/// let ctx = RequestContext::builder()
+///     .action("s3:PutObject")
+///     .resource("arn:aws:s3:::my-bucket/file.txt")
+///     .principal_arn("arn:aws:iam::123456789012:user/alice")
+///     .context_key("s3:x-amz-server-side-encryption", "AES256")
+///     .secure_transport(true)
+///     .build()
+///     .unwrap();
+///
+/// // Service-specific keys are accessible via get_condition_value
+/// let value = ctx.get_condition_value("s3:x-amz-server-side-encryption");
+/// assert_eq!(value, Some(vec!["AES256".to_string()]));
+/// ```
 #[derive(Debug, Default)]
 pub struct RequestContextBuilder {
     action: Option<String>,
@@ -271,10 +315,10 @@ pub struct RequestContextBuilder {
     source_org_id: Option<String>,
     source_org_paths: Option<Vec<String>>,
     // Context keys and tags
-    context_keys: HashMap<String, Vec<String>>,
-    principal_tags: HashMap<String, String>,
-    resource_tags: HashMap<String, String>,
-    request_tags: HashMap<String, String>,
+    context_keys: FxHashMap<String, Vec<String>>,
+    principal_tags: FxHashMap<String, String>,
+    resource_tags: FxHashMap<String, String>,
+    request_tags: FxHashMap<String, String>,
     // Context bags (new architecture)
     principal_ctx: PrincipalContext,
     resource_ctx: ResourceContext,
@@ -796,6 +840,7 @@ impl RequestContextBuilder {
     }
 
     /// Build the RequestContext.
+    #[must_use = "building may fail, check the Result"]
     pub fn build(self) -> crate::error::Result<RequestContext> {
         let action = self
             .action

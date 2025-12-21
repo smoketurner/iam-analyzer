@@ -20,6 +20,15 @@ use std::fs;
 use std::io::IsTerminal;
 use std::path::Path;
 
+/// Print a verbose message at the specified level.
+macro_rules! verbose {
+    ($level:expr, $verbosity:expr, $($arg:tt)*) => {
+        if $verbosity >= $level {
+            eprintln!("[verbose] {}", format!($($arg)*));
+        }
+    };
+}
+
 /// Run the CLI application.
 ///
 /// Returns the evaluation decision (if an evaluation was performed).
@@ -27,6 +36,7 @@ use std::path::Path;
 /// that doesn't perform an evaluation.
 pub fn run() -> Result<Option<Decision>> {
     let args = Args::parse();
+    let verbosity = args.verbose;
 
     // Handle --completions
     if let Some(shell) = args.completions {
@@ -50,6 +60,9 @@ pub fn run() -> Result<Option<Decision>> {
         )
     })?;
 
+    verbose!(1, verbosity, "Evaluating action: {}", action);
+    verbose!(1, verbosity, "Against resource: {}", resource);
+
     // Warn if identity policies are provided without principal context
     // This is a common mistake that leads to confusing results
     if !args.identity_policy.is_empty()
@@ -66,6 +79,7 @@ pub fn run() -> Result<Option<Decision>> {
 
     // Create service loader based on offline mode
     let service_loader = ServiceLoader::new(args.offline);
+    verbose!(2, verbosity, "Offline mode: {}", args.offline);
 
     // If --update-definitions is specified, refresh cached service definitions
     if args.update_definitions {
@@ -93,17 +107,21 @@ pub fn run() -> Result<Option<Decision>> {
     }
 
     // Build the policy set
-    let policies = build_policy_set(&args)?;
+    verbose!(1, verbosity, "Loading policies...");
+    let policies = build_policy_set(&args, verbosity)?;
 
     // Build the request context
-    let context = build_request_context(&args, action, resource)?;
+    verbose!(1, verbosity, "Building request context...");
+    let context = build_request_context(&args, action, resource, verbosity)?;
 
     // Validate policies against service definitions (unless in offline mode without cache)
     validate_policies_against_services(&args, action, &policies, &service_loader)?;
 
     // Run the evaluation
+    verbose!(1, verbosity, "Running policy evaluation...");
     let engine = EvaluationEngine::new();
     let result = engine.evaluate(&context, &policies);
+    verbose!(2, verbosity, "Evaluation complete: {:?}", result.decision);
 
     // Determine if we should use colors
     let use_colors = should_use_colors(args.color);
@@ -261,12 +279,16 @@ fn print_result_summary(result: &EvaluationResult, use_colors: bool) {
 }
 
 /// Load a policy from a JSON file with optional validation.
-fn load_policy(path: &Path) -> Result<NamedPolicy> {
-    load_policy_with_validation(path, true)
+fn load_policy(path: &Path, verbosity: u8) -> Result<NamedPolicy> {
+    load_policy_with_validation(path, true, verbosity)
 }
 
 /// Load a policy from a JSON file with configurable validation.
-fn load_policy_with_validation(path: &Path, show_warnings: bool) -> Result<NamedPolicy> {
+fn load_policy_with_validation(
+    path: &Path,
+    show_warnings: bool,
+    verbosity: u8,
+) -> Result<NamedPolicy> {
     let content = fs::read_to_string(path).map_err(|e| Error::FileRead {
         path: path.display().to_string(),
         source: e,
@@ -277,6 +299,14 @@ fn load_policy_with_validation(path: &Path, show_warnings: bool) -> Result<Named
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| path.display().to_string());
+
+    verbose!(
+        2,
+        verbosity,
+        "Parsed policy '{}' with {} statements",
+        name,
+        policy.statement.len()
+    );
 
     // Validate the policy
     let issues = validate_policy(&policy);
@@ -298,53 +328,67 @@ fn load_policy_with_validation(path: &Path, show_warnings: bool) -> Result<Named
 }
 
 /// Build the policy set from CLI arguments.
-fn build_policy_set(args: &Args) -> Result<PolicySet> {
+fn build_policy_set(args: &Args, verbosity: u8) -> Result<PolicySet> {
     let mut policies = PolicySet::default();
 
     // Load identity policies
     for path in &args.identity_policy {
+        verbose!(1, verbosity, "Loading identity policy: {}", path);
         policies
             .identity_policies
-            .push(load_policy(Path::new(path))?);
+            .push(load_policy(Path::new(path), verbosity)?);
     }
 
     // Load resource policies
     for path in &args.resource_policy {
+        verbose!(1, verbosity, "Loading resource policy: {}", path);
         policies
             .resource_policies
-            .push(load_policy(Path::new(path))?);
+            .push(load_policy(Path::new(path), verbosity)?);
     }
 
     // Load permission boundaries
     for path in &args.permission_boundary {
+        verbose!(1, verbosity, "Loading permission boundary: {}", path);
         policies
             .permission_boundaries
-            .push(load_policy(Path::new(path))?);
+            .push(load_policy(Path::new(path), verbosity)?);
     }
 
     // Load session policies
     for path in &args.session_policy {
+        verbose!(1, verbosity, "Loading session policy: {}", path);
         policies
             .session_policies
-            .push(load_policy(Path::new(path))?);
+            .push(load_policy(Path::new(path), verbosity)?);
     }
 
     // Load VPC endpoint policies
     for path in &args.vpc_endpoint_policy {
+        verbose!(1, verbosity, "Loading VPC endpoint policy: {}", path);
         policies
             .vpc_endpoint_policies
-            .push(load_policy(Path::new(path))?);
+            .push(load_policy(Path::new(path), verbosity)?);
     }
 
     // Load organization config if provided
     if let Some(config_path) = &args.organization_config {
-        let (scp_hierarchy, rcp_hierarchy) = load_organization_config(config_path)?;
+        verbose!(1, verbosity, "Loading organization config: {}", config_path);
+        let (scp_hierarchy, rcp_hierarchy) = load_organization_config(config_path, verbosity)?;
 
         if let Some(hierarchy) = scp_hierarchy
             && (!hierarchy.root_scps.is_empty()
                 || !hierarchy.ou_scps.is_empty()
                 || !hierarchy.account_scps.is_empty())
         {
+            let count = hierarchy.root_scps.len()
+                + hierarchy
+                    .ou_scps
+                    .iter()
+                    .map(|ou| ou.policies.len())
+                    .sum::<usize>()
+                + hierarchy.account_scps.len();
+            verbose!(2, verbosity, "Loaded {} SCP policies in hierarchy", count);
             policies.scp_hierarchy = Some(hierarchy);
         }
 
@@ -353,9 +397,24 @@ fn build_policy_set(args: &Args) -> Result<PolicySet> {
                 || !hierarchy.ou_scps.is_empty()
                 || !hierarchy.account_scps.is_empty())
         {
+            let count = hierarchy.root_scps.len()
+                + hierarchy
+                    .ou_scps
+                    .iter()
+                    .map(|ou| ou.policies.len())
+                    .sum::<usize>()
+                + hierarchy.account_scps.len();
+            verbose!(2, verbosity, "Loaded {} RCP policies in hierarchy", count);
             policies.rcp_hierarchy = Some(hierarchy);
         }
     }
+
+    let total = policies.identity_policies.len()
+        + policies.resource_policies.len()
+        + policies.permission_boundaries.len()
+        + policies.session_policies.len()
+        + policies.vpc_endpoint_policies.len();
+    verbose!(1, verbosity, "Loaded {} direct policies", total);
 
     Ok(policies)
 }
@@ -365,6 +424,7 @@ fn build_policy_set(args: &Args) -> Result<PolicySet> {
 /// Returns (SCP hierarchy, RCP hierarchy) - each is Option since they may not be present.
 fn load_organization_config(
     config_path: &str,
+    verbosity: u8,
 ) -> Result<(Option<OrganizationHierarchy>, Option<OrganizationHierarchy>)> {
     let content = fs::read_to_string(config_path).map_err(|e| Error::FileRead {
         path: config_path.to_string(),
@@ -382,13 +442,23 @@ fn load_organization_config(
     let base_dir = Path::new(config_path).parent().unwrap_or(Path::new("."));
 
     let scp_hierarchy = if let Some(scp_config) = config.scp_hierarchy {
-        Some(build_hierarchy_from_config(&scp_config, base_dir)?)
+        verbose!(2, verbosity, "Loading SCP hierarchy from config");
+        Some(build_hierarchy_from_config(
+            &scp_config,
+            base_dir,
+            verbosity,
+        )?)
     } else {
         None
     };
 
     let rcp_hierarchy = if let Some(rcp_config) = config.rcp_hierarchy {
-        Some(build_hierarchy_from_config(&rcp_config, base_dir)?)
+        verbose!(2, verbosity, "Loading RCP hierarchy from config");
+        Some(build_hierarchy_from_config(
+            &rcp_config,
+            base_dir,
+            verbosity,
+        )?)
     } else {
         None
     };
@@ -400,21 +470,27 @@ fn load_organization_config(
 fn build_hierarchy_from_config(
     config: &org_config::HierarchyConfig,
     base_dir: &Path,
+    verbosity: u8,
 ) -> Result<OrganizationHierarchy> {
     let mut hierarchy = OrganizationHierarchy::default();
 
     // Load root policies
     for path in &config.root {
         let full_path = resolve_path(path, base_dir);
-        hierarchy.root_scps.push(load_policy(&full_path)?);
+        verbose!(2, verbosity, "Loading root policy: {}", full_path.display());
+        hierarchy
+            .root_scps
+            .push(load_policy(&full_path, verbosity)?);
     }
 
     // Load OU policies
     for ou in &config.ous {
+        verbose!(2, verbosity, "Loading OU '{}' policies", ou.id);
         let mut ou_policies = Vec::new();
         for path in &ou.policies {
             let full_path = resolve_path(path, base_dir);
-            ou_policies.push(load_policy(&full_path)?);
+            verbose!(3, verbosity, "  Loading: {}", full_path.display());
+            ou_policies.push(load_policy(&full_path, verbosity)?);
         }
         hierarchy.ou_scps.push(OuScpSet {
             ou_id: ou.id.clone(),
@@ -426,7 +502,15 @@ fn build_hierarchy_from_config(
     // Load account policies
     for path in &config.account {
         let full_path = resolve_path(path, base_dir);
-        hierarchy.account_scps.push(load_policy(&full_path)?);
+        verbose!(
+            2,
+            verbosity,
+            "Loading account policy: {}",
+            full_path.display()
+        );
+        hierarchy
+            .account_scps
+            .push(load_policy(&full_path, verbosity)?);
     }
 
     Ok(hierarchy)
@@ -484,33 +568,56 @@ fn load_request_context_file(path: &str) -> Result<RequestContextFile> {
 }
 
 /// Build the request context from CLI arguments.
-fn build_request_context(args: &Args, action: &str, resource: &str) -> Result<RequestContext> {
+fn build_request_context(
+    args: &Args,
+    action: &str,
+    resource: &str,
+    verbosity: u8,
+) -> Result<RequestContext> {
     let mut builder = RequestContext::builder().action(action).resource(resource);
 
     // Load principal context from file if provided
     if let Some(path) = &args.principal_context {
+        verbose!(2, verbosity, "Loading principal context from: {}", path);
         let ctx = load_principal_context(path)?;
         builder = apply_principal_context(builder, &ctx);
     }
 
     // CLI --principal-arn overrides file (highest priority)
     if let Some(principal) = &args.principal_arn {
+        verbose!(2, verbosity, "Using principal ARN: {}", principal);
         builder = builder.principal_arn(principal);
     }
 
     // Load resource context from file if provided
     if let Some(path) = &args.resource_context {
+        verbose!(2, verbosity, "Loading resource context from: {}", path);
         let ctx = load_resource_context(path)?;
         builder = apply_resource_context(builder, &ctx);
     }
 
     // Load request context from file if provided
     if let Some(path) = &args.request_context {
+        verbose!(2, verbosity, "Loading request context from: {}", path);
         let ctx = load_request_context_file(path)?;
         builder = apply_request_context(builder, &ctx);
     }
 
-    builder.build()
+    let context = builder.build()?;
+    verbose!(2, verbosity, "Request context built successfully");
+    verbose!(3, verbosity, "  Action: {}", context.action);
+    verbose!(3, verbosity, "  Resource: {}", context.resource);
+    if let Some(principal) = &context.principal_arn {
+        verbose!(3, verbosity, "  Principal: {}", principal);
+    }
+    verbose!(
+        3,
+        verbosity,
+        "  Cross-account: {}",
+        context.is_cross_account
+    );
+
+    Ok(context)
 }
 
 /// Apply principal context file to builder.

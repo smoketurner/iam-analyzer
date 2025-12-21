@@ -1,0 +1,38 @@
+{
+    "_attribution": {
+        "source": "https://github.com/aws-samples/service-control-policy-examples",
+        "license": "Apache-2.0",
+        "copyright": "Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.",
+        "original_file": "Region-controls/Deny-access-to-AWS-based-on-the-requested-AWS-region.json",
+        "modified": true,
+        "modification_notes": "Changed regions to US regions for testing; simplified NotAction list"
+    },
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Deny",
+            "NotAction": [
+                "iam:*",
+                "sts:*",
+                "organizations:*",
+                "support:*",
+                "route53:*",
+                "cloudfront:*",
+                "s3:GetAccountPublic*",
+                "s3:ListAllMyBuckets"
+            ],
+            "Resource": "*",
+            "Condition": {
+                "StringNotEquals": {
+                    "aws:RequestedRegion": [
+                        "us-east-1",
+                        "us-west-2"
+                    ]
+                },
+                "ArnNotLike": {
+                    "aws:PrincipalARN": "arn:aws:iam::*:role/AdminRole"
+                }
+            }
+        }
+    ]
+}

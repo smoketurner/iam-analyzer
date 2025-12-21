@@ -8,7 +8,7 @@
 //! - Network context (network properties)
 //! - Session context (role session properties)
 
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 /// Typed condition value preserving semantics.
 ///
@@ -75,7 +75,7 @@ impl ConditionValue {
 /// case-insensitive matching per AWS IAM behavior.
 #[derive(Debug, Clone, Default)]
 pub struct ContextBag {
-    values: HashMap<String, ConditionValue>,
+    values: FxHashMap<String, ConditionValue>,
 }
 
 impl ContextBag {

@@ -41,6 +41,7 @@ impl ArnPattern {
     /// // Match any EC2 instance in any region
     /// let pattern = ArnPattern::parse("arn:aws:ec2:*:123456789012:instance/*").unwrap();
     /// ```
+    #[must_use = "parsing may fail, check the Result"]
     pub fn parse(s: &str) -> Result<Self> {
         // Special case: "*" matches everything
         if s == "*" {

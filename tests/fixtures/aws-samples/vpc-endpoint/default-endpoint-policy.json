@@ -1,0 +1,51 @@
+{
+    "_attribution": {
+        "source": "https://github.com/aws-samples/data-perimeter-policy-examples",
+        "license": "Apache-2.0",
+        "copyright": "Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.",
+        "original_file": "vpc_endpoint_policies/default_endpoint_policy.json",
+        "modified": true,
+        "modification_notes": "Replaced org ID placeholder with test value"
+    },
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "AllowRequestsByOrgsIdentitiesToOrgsResources",
+            "Effect": "Allow",
+            "Principal": "*",
+            "Action": "*",
+            "Resource": "*",
+            "Condition": {
+                "StringEquals": {
+                    "aws:PrincipalOrgID": "o-testorg123",
+                    "aws:ResourceOrgID": "o-testorg123"
+                }
+            }
+        },
+        {
+            "Sid": "AllowRequestsByAWSServicePrincipals",
+            "Effect": "Allow",
+            "Principal": "*",
+            "Action": "*",
+            "Resource": "*",
+            "Condition": {
+                "Bool": {
+                    "aws:PrincipalIsAWSService": "true"
+                }
+            }
+        },
+        {
+            "Sid": "AllowRequestsByOrgsIdentitiesToAnyResources",
+            "Effect": "Allow",
+            "Principal": "*",
+            "Action": "*",
+            "Resource": "*",
+            "Condition": {
+                "StringEquals": {
+                    "aws:PrincipalOrgID": "o-testorg123",
+                    "aws:PrincipalTag/dp:exclude:resource": "true"
+                }
+            }
+        }
+    ]
+}

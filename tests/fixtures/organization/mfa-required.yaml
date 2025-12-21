@@ -1,9 +1,11 @@
 # Organization config for MFA requirement demo
 # SCPs at root allow full access, account-level SCP requires MFA for EC2 terminate
+# Note: FullAWSAccess must be at every level to provide the base Allow
 
 scp_hierarchy:
   root:
     - ../scp/full-aws-access.json
   ous: []
   account:
+    - ../scp/full-aws-access.json
     - ../scp/require-mfa-ec2-terminate.json

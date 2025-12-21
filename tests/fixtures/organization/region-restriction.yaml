@@ -1,9 +1,11 @@
 # Organization config for region restriction demo
 # SCPs at root allow full access, account-level SCP restricts to US regions
+# Note: FullAWSAccess must be at every level to provide the base Allow
 
 scp_hierarchy:
   root:
     - ../scp/full-aws-access.json
   ous: []
   account:
+    - ../scp/full-aws-access.json
     - ../scp/deny-region-outside-us.json

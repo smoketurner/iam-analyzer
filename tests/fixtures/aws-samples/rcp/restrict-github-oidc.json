@@ -1,0 +1,27 @@
+{
+    "_attribution": {
+        "source": "https://github.com/aws-samples/resource-control-policy-examples",
+        "license": "Apache-2.0",
+        "copyright": "Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.",
+        "original_file": "Limit-access-to-trusted-OIDC-identity-providers/GitHub-Actions.json",
+        "modified": true,
+        "modification_notes": "Changed org placeholder to test value"
+    },
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Deny",
+            "Principal": "*",
+            "Action": "sts:AssumeRoleWithWebIdentity",
+            "Resource": "*",
+            "Condition": {
+                "StringNotLikeIfExists": {
+                    "token.actions.githubusercontent.com:sub": "repo:trusted-org/*"
+                },
+                "Null": {
+                    "token.actions.githubusercontent.com:sub": "false"
+                }
+            }
+        }
+    ]
+}

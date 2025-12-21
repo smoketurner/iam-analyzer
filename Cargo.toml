@@ -22,6 +22,7 @@ chrono = { version = "0.4", default-features = false, features = ["std", "clock"
 ipnet = { version = "2.11", default-features = false, features = ["std"] }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 directories = { version = "6.0", default-features = false }
+rustc-hash = { version = "2.1", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 # Using std test framework only

@@ -1,0 +1,63 @@
+{
+    "_attribution": {
+        "source": "https://github.com/aws-samples/data-perimeter-policy-examples",
+        "license": "Apache-2.0",
+        "copyright": "Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.",
+        "original_file": "service_control_policies/resource_perimeter_scp.json",
+        "modified": true,
+        "modification_notes": "Simplified placeholders for testing"
+    },
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "EnforceResourcePerimeterAWSResources",
+            "Effect": "Deny",
+            "Action": "*",
+            "Resource": "*",
+            "Condition": {
+                "StringNotEqualsIfExists": {
+                    "aws:ResourceOrgID": "o-testorg123",
+                    "aws:PrincipalTag/dp:exclude:resource": "true"
+                }
+            }
+        },
+        {
+            "Sid": "EnforceResourcePerimeterAWSResourcesS3",
+            "Effect": "Deny",
+            "Action": "*",
+            "Resource": [
+                "arn:aws:s3:::dataexchange-bucket/*",
+                "arn:aws:s3:::servicecatalog-bucket/*"
+            ],
+            "Condition": {
+                "StringNotEqualsIfExists": {
+                    "aws:ResourceOrgID": "o-testorg123",
+                    "aws:PrincipalTag/dp:exclude:resource": "true"
+                },
+                "ForAllValues:StringNotEquals": {
+                    "aws:CalledVia": [
+                        "dataexchange.amazonaws.com",
+                        "servicecatalog.amazonaws.com"
+                    ]
+                }
+            }
+        },
+        {
+            "Sid": "EnforceResourcePerimeterThirdPartyResources",
+            "Effect": "Deny",
+            "Action": "*",
+            "Resource": [
+                "arn:aws:s3:::third-party-bucket/*"
+            ],
+            "Condition": {
+                "StringNotEqualsIfExists": {
+                    "aws:PrincipalTag/dp:exclude:resource": "true",
+                    "aws:ResourceAccount": [
+                        "333333333333",
+                        "444444444444"
+                    ]
+                }
+            }
+        }
+    ]
+}

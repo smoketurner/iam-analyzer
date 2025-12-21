@@ -1,6 +1,6 @@
 //! CLI argument definitions.
 
-use clap::{CommandFactory, Parser, ValueEnum};
+use clap::{ArgAction, CommandFactory, Parser, ValueEnum};
 use clap_complete::Shell;
 
 /// Color output preference
@@ -236,6 +236,14 @@ pub struct Args {
     /// Control color output
     #[arg(long, value_enum, default_value_t = ColorChoice::Auto, env = "IAM_ANALYZER_COLOR", help_heading = "Output")]
     pub color: ColorChoice,
+
+    /// Increase verbosity level (can be repeated: -v, -vv, -vvv)
+    ///
+    /// -v: Show policy loading details
+    /// -vv: Show statement matching and condition evaluation
+    /// -vvv: Show full evaluation trace
+    #[arg(short = 'v', long = "verbose", action = ArgAction::Count, help_heading = "Output")]
+    pub verbose: u8,
 
     /// Generate shell completions and exit
     ///

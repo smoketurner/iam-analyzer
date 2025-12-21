@@ -1,0 +1,51 @@
+{
+    "_attribution": {
+        "source": "https://github.com/aws-samples/data-perimeter-policy-examples",
+        "license": "Apache-2.0",
+        "copyright": "Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.",
+        "original_file": "service_control_policies/network_perimeter_vpceorgid_scp.json",
+        "modified": true,
+        "modification_notes": "Reduced service list for testing; simplified placeholders"
+    },
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "EnforceNetworkPerimeterVpceOrgID",
+            "Effect": "Deny",
+            "Action": [
+                "kms:*",
+                "lambda:*",
+                "s3:*",
+                "secretsmanager:*"
+            ],
+            "Resource": "*",
+            "Condition": {
+                "BoolIfExists": {
+                    "aws:ViaAWSService": "false"
+                },
+                "NotIpAddressIfExists": {
+                    "aws:SourceIp": [
+                        "10.0.0.0/8",
+                        "192.168.0.0/16"
+                    ]
+                },
+                "StringNotEqualsIfExists": {
+                    "aws:PrincipalTag/dp:exclude:network": "true",
+                    "aws:VpceOrgID": "o-testorg123",
+                    "aws:VpceAccount": [
+                        "333333333333",
+                        "444444444444"
+                    ]
+                },
+                "ArnNotLikeIfExists": {
+                    "aws:PrincipalArn": [
+                        "arn:aws:iam::*:role/aws:ec2-infrastructure"
+                    ]
+                },
+                "StringEquals": {
+                    "aws:PrincipalTag/dp:include:network": "true"
+                }
+            }
+        }
+    ]
+}

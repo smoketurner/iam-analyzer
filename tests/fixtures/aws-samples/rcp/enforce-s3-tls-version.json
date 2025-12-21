@@ -1,0 +1,23 @@
+{
+    "_attribution": {
+        "source": "https://github.com/aws-samples/resource-control-policy-examples",
+        "license": "Apache-2.0",
+        "copyright": "Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.",
+        "original_file": "Service-specific-controls/S3-Enforce-TLS-version.json",
+        "modified": false
+    },
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Deny",
+            "Principal": "*",
+            "Action": "s3:*",
+            "Resource": "*",
+            "Condition": {
+                "NumericLessThan": {
+                    "s3:TlsVersion": "1.2"
+                }
+            }
+        }
+    ]
+}

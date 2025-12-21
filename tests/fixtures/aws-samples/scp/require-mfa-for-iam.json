@@ -1,0 +1,33 @@
+{
+    "_attribution": {
+        "source": "https://github.com/aws-samples/service-control-policy-examples",
+        "license": "Apache-2.0",
+        "copyright": "Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.",
+        "original_file": "Privileged-access-controls/Require-MFA-for-IAM-operations.json",
+        "modified": true,
+        "modification_notes": "Created simplified version for testing MFA condition"
+    },
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "DenyIAMActionsWithoutMFA",
+            "Effect": "Deny",
+            "Action": [
+                "iam:CreateUser",
+                "iam:DeleteUser",
+                "iam:CreateRole",
+                "iam:DeleteRole",
+                "iam:AttachRolePolicy",
+                "iam:DetachRolePolicy",
+                "iam:CreateAccessKey",
+                "iam:DeleteAccessKey"
+            ],
+            "Resource": "*",
+            "Condition": {
+                "BoolIfExists": {
+                    "aws:MultiFactorAuthPresent": "false"
+                }
+            }
+        }
+    ]
+}

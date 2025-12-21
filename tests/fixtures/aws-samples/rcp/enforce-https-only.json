@@ -1,0 +1,29 @@
+{
+    "_attribution": {
+        "source": "https://github.com/aws-samples/resource-control-policy-examples",
+        "license": "Apache-2.0",
+        "copyright": "Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.",
+        "original_file": "Restrict-resource-access-patterns/Restrict-access-to-only-HTTPS-connections-to-your-resources.json",
+        "modified": true,
+        "modification_notes": "Reduced service list for focused testing"
+    },
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Deny",
+            "Principal": "*",
+            "Action": [
+                "s3:*",
+                "sqs:*",
+                "secretsmanager:*",
+                "kms:*"
+            ],
+            "Resource": "*",
+            "Condition": {
+                "BoolIfExists": {
+                    "aws:SecureTransport": "false"
+                }
+            }
+        }
+    ]
+}

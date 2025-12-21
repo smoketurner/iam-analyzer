@@ -185,6 +185,63 @@ impl EvaluationEngine {
     /// 5. Check permission boundaries
     /// 6. Check session policies
     /// 7. Check identity + resource policies (union same-account, intersection cross-account)
+    ///
+    /// # Examples
+    ///
+    /// SCP explicit deny overrides identity policy allows:
+    ///
+    /// ```
+    /// use iam_analyzer::{EvaluationEngine, PolicySet, RequestContext, Decision, NamedPolicy, Policy, OrganizationHierarchy};
+    ///
+    /// let engine = EvaluationEngine::new();
+    ///
+    /// // Request to launch EC2 in eu-west-1
+    /// let ctx = RequestContext::builder()
+    ///     .action("ec2:RunInstances")
+    ///     .resource("arn:aws:ec2:eu-west-1:123456789012:instance/*")
+    ///     .principal_arn("arn:aws:iam::123456789012:user/developer")
+    ///     .requested_region("eu-west-1")
+    ///     .build()
+    ///     .unwrap();
+    ///
+    /// // Identity policy allows all EC2 actions
+    /// let identity: Policy = serde_json::from_str(r#"{
+    ///     "Statement": [{"Effect": "Allow", "Action": "ec2:*", "Resource": "*"}]
+    /// }"#).unwrap();
+    ///
+    /// // SCP denies actions outside allowed regions
+    /// let scp: Policy = serde_json::from_str(r#"{
+    ///     "Statement": [{
+    ///         "Effect": "Deny",
+    ///         "Action": "*",
+    ///         "Resource": "*",
+    ///         "Condition": {
+    ///             "StringNotEquals": {"aws:RequestedRegion": ["us-east-1", "us-west-2"]}
+    ///         }
+    ///     }]
+    /// }"#).unwrap();
+    ///
+    /// // Full access SCP required at each level
+    /// let full_access: Policy = serde_json::from_str(r#"{
+    ///     "Statement": [{"Effect": "Allow", "Action": "*", "Resource": "*"}]
+    /// }"#).unwrap();
+    ///
+    /// let policies = PolicySet {
+    ///     identity_policies: vec![NamedPolicy::new("EC2FullAccess", identity)],
+    ///     scp_hierarchy: Some(OrganizationHierarchy {
+    ///         root_scps: vec![NamedPolicy::new("FullAccess", full_access.clone())],
+    ///         ou_scps: vec![],
+    ///         account_scps: vec![
+    ///             NamedPolicy::new("FullAccess", full_access),
+    ///             NamedPolicy::new("RegionRestriction", scp),
+    ///         ],
+    ///     }),
+    ///     ..Default::default()
+    /// };
+    ///
+    /// let result = engine.evaluate(&ctx, &policies);
+    /// assert_eq!(result.decision, Decision::ExplicitDeny);
+    /// ```
     pub fn evaluate(&self, context: &RequestContext, policies: &PolicySet) -> EvaluationResult {
         match self.evaluate_impl(context, policies) {
             Ok(result) => result,

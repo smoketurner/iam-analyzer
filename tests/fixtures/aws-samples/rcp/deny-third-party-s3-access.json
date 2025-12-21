@@ -1,0 +1,28 @@
+{
+    "_attribution": {
+        "source": "https://github.com/aws-samples/resource-control-policy-examples",
+        "license": "Apache-2.0",
+        "copyright": "Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.",
+        "original_file": "Data-perimeter-guardrails/deny-third-party-s3-access.json",
+        "modified": true,
+        "modification_notes": "Created for testing organization boundary controls"
+    },
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "DenyS3AccessOutsideOrg",
+            "Effect": "Deny",
+            "Principal": "*",
+            "Action": "s3:*",
+            "Resource": "*",
+            "Condition": {
+                "StringNotEqualsIfExists": {
+                    "aws:PrincipalOrgID": "o-testorg123"
+                },
+                "BoolIfExists": {
+                    "aws:PrincipalIsAWSService": "false"
+                }
+            }
+        }
+    ]
+}

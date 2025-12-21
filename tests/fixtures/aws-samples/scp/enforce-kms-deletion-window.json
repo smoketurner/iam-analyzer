@@ -1,0 +1,22 @@
+{
+    "_attribution": {
+        "source": "https://github.com/aws-samples/service-control-policy-examples",
+        "license": "Apache-2.0",
+        "copyright": "Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.",
+        "original_file": "Protect-cloud-platform-resource/Enforce-30-days-for-KMS-deletion.json",
+        "modified": false
+    },
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Deny",
+            "Action": "kms:ScheduleKeyDeletion",
+            "Resource": "*",
+            "Condition": {
+                "NumericLessThan": {
+                    "kms:ScheduleKeyDeletionPendingWindowInDays": "30"
+                }
+            }
+        }
+    ]
+}
