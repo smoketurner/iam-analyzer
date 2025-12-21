@@ -4,29 +4,40 @@ mod args;
 mod context_files;
 mod org_config;
 
-use args::{Args, OutputFormat};
+use args::{Args, ColorChoice, OutputFormat};
 use clap::Parser;
 use context_files::{PrincipalContextFile, RequestContextFile, ResourceContextFile};
 use iam_analyzer::error::{Error, Result};
 use iam_analyzer::eval::{
-    EvaluationEngine, NamedPolicy, OrganizationHierarchy, OuScpSet, PolicySet, RequestContext,
-    RequestContextBuilder,
+    Decision, EvaluationEngine, EvaluationResult, NamedPolicy, OrganizationHierarchy, OuScpSet,
+    PolicySet, RequestContext, RequestContextBuilder,
 };
 use iam_analyzer::policy::{
     Policy, Severity, has_errors, validate_against_service_definitions, validate_policy,
 };
 use iam_analyzer::service::{ServiceLoader, extract_service_name};
 use std::fs;
+use std::io::IsTerminal;
 use std::path::Path;
 
 /// Run the CLI application.
-pub fn run() -> Result<()> {
+///
+/// Returns the evaluation decision (if an evaluation was performed).
+/// Returns `None` if the command was something like `--generate-context-template`
+/// that doesn't perform an evaluation.
+pub fn run() -> Result<Option<Decision>> {
     let args = Args::parse();
+
+    // Handle --completions
+    if let Some(shell) = args.completions {
+        Args::print_completions(shell);
+        return Ok(None);
+    }
 
     // Handle --generate-context-template
     if args.generate_context_template {
         generate_context_templates();
-        return Ok(());
+        return Ok(None);
     }
 
     // At this point, action and resource must be present
@@ -94,13 +105,16 @@ pub fn run() -> Result<()> {
     let engine = EvaluationEngine::new();
     let result = engine.evaluate(&context, &policies);
 
+    // Determine if we should use colors
+    let use_colors = should_use_colors(args.color);
+
     // Output the result based on format
     match args.output {
         OutputFormat::Text => {
-            println!("{}", result);
+            print_result_text(&result, use_colors);
         }
         OutputFormat::Summary => {
-            print!("{}", result.summary());
+            print_result_summary(&result, use_colors);
         }
         OutputFormat::Json => {
             let json = serde_json::to_string_pretty(&result)
@@ -108,12 +122,142 @@ pub fn run() -> Result<()> {
             println!("{}", json);
         }
         OutputFormat::Quiet => {
-            // Just print the decision
-            println!("{}", result.decision);
+            // Just print the decision (with color)
+            println!("{}", colorize_decision(result.decision, use_colors));
         }
     }
 
-    Ok(())
+    Ok(Some(result.decision))
+}
+
+/// Determine if colors should be used based on the color choice.
+fn should_use_colors(choice: ColorChoice) -> bool {
+    match choice {
+        ColorChoice::Always => true,
+        ColorChoice::Never => false,
+        ColorChoice::Auto => std::io::stdout().is_terminal(),
+    }
+}
+
+/// Get the ANSI color code for a decision.
+fn decision_color(decision: Decision) -> &'static str {
+    match decision {
+        Decision::Allow => "\x1b[32m",        // Green
+        Decision::ExplicitDeny => "\x1b[31m", // Red
+        Decision::ImplicitDeny => "\x1b[33m", // Yellow
+    }
+}
+
+/// Reset ANSI color.
+const RESET: &str = "\x1b[0m";
+
+/// Colorize a decision string.
+fn colorize_decision(decision: Decision, use_colors: bool) -> String {
+    if use_colors {
+        format!("{}{}{}", decision_color(decision), decision, RESET)
+    } else {
+        decision.to_string()
+    }
+}
+
+/// Print the full text result with optional colors.
+fn print_result_text(result: &EvaluationResult, use_colors: bool) {
+    println!(
+        "Decision: {}",
+        colorize_decision(result.decision, use_colors)
+    );
+    println!();
+    println!("Reasoning:");
+
+    for (i, step) in result.reasoning.iter().enumerate() {
+        print!("  [{}] {} ", i + 1, step.policy_type);
+        if !step.policy_name.is_empty() {
+            print!("({})", step.policy_name);
+        }
+        println!();
+
+        if let Some(sid) = &step.statement_sid {
+            print!("      Statement \"{}\" ", sid);
+        } else {
+            print!("      ");
+        }
+
+        if step.matched {
+            print!("matches");
+        } else {
+            print!("does not match");
+        }
+
+        if let Some(effect) = &step.effect {
+            print!(" - Effect: {:?}", effect);
+        }
+
+        println!();
+
+        if !step.details.is_empty() {
+            println!("      {}", step.details);
+        }
+
+        // Show detailed breakdown if available
+        if let Some(breakdown) = &step.breakdown {
+            let breakdown_str = breakdown.to_string();
+            for line in breakdown_str.lines() {
+                if !line.is_empty() {
+                    println!("        {}", line);
+                }
+            }
+        }
+    }
+
+    if let Some(policy_type) = &result.deciding_policy_type {
+        println!();
+        print!(
+            "Final: {} from {}",
+            colorize_decision(result.decision, use_colors),
+            policy_type
+        );
+        if let Some(stmt) = &result.deciding_statement {
+            print!(" statement \"{}\"", stmt);
+        }
+        println!();
+    }
+}
+
+/// Print the summary result with optional colors.
+fn print_result_summary(result: &EvaluationResult, use_colors: bool) {
+    println!(
+        "Decision: {}",
+        colorize_decision(result.decision, use_colors)
+    );
+
+    if let Some(policy_type) = &result.deciding_policy_type {
+        println!("Policy Type: {}", policy_type);
+    }
+
+    if let Some(stmt) = &result.deciding_statement {
+        println!("Statement: {}", stmt);
+    }
+
+    // Find the deciding reasoning step
+    let deciding_step = result.reasoning.iter().find(|step| {
+        step.matched
+            && step.effect.is_some_and(|e| match result.decision {
+                Decision::Allow => e == iam_analyzer::policy::Effect::Allow,
+                Decision::ExplicitDeny => e == iam_analyzer::policy::Effect::Deny,
+                Decision::ImplicitDeny => false,
+            })
+    });
+
+    if let Some(step) = deciding_step {
+        if !step.policy_name.is_empty() {
+            println!("Policy: {}", step.policy_name);
+        }
+        if !step.details.is_empty() {
+            println!("Reason: {}", step.details);
+        }
+    } else if result.decision == Decision::ImplicitDeny {
+        println!("Reason: No Allow statement matched");
+    }
 }
 
 /// Load a policy from a JSON file with optional validation.
@@ -227,7 +371,7 @@ fn load_organization_config(
         source: e,
     })?;
 
-    let config: org_config::OrganizationConfig = serde_yaml::from_str(&content).map_err(|e| {
+    let config: org_config::OrganizationConfig = serde_yml::from_str(&content).map_err(|e| {
         Error::Other(format!(
             "Failed to parse organization config '{}': {}",
             config_path, e

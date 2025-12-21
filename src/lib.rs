@@ -13,16 +13,29 @@
 //!
 //! ## Example
 //!
-//! ```rust,ignore
-//! use iam_analyzer::{EvaluationEngine, PolicySet, RequestContext, Decision};
+//! ```
+//! use iam_analyzer::{EvaluationEngine, PolicySet, RequestContext, Decision, NamedPolicy, Policy};
 //!
-//! let result = EvaluationEngine::new().evaluate(
-//!     &RequestContext::builder()
-//!         .action("s3:GetObject")
-//!         .resource("arn:aws:s3:::my-bucket/file.txt")
-//!         .build()?,
-//!     &policy_set,
-//! );
+//! // Parse a policy from JSON
+//! let policy: Policy = serde_json::from_str(r#"{
+//!     "Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}]
+//! }"#).unwrap();
+//!
+//! // Build the request context
+//! let ctx = RequestContext::builder()
+//!     .action("s3:GetObject")
+//!     .resource("arn:aws:s3:::my-bucket/file.txt")
+//!     .principal_arn("arn:aws:iam::123456789012:user/alice")
+//!     .build()
+//!     .unwrap();
+//!
+//! // Create policy set and evaluate
+//! let policies = PolicySet {
+//!     identity_policies: vec![NamedPolicy::new("S3ReadPolicy", policy)],
+//!     ..Default::default()
+//! };
+//!
+//! let result = EvaluationEngine::new().evaluate(&ctx, &policies);
 //!
 //! match result.decision {
 //!     Decision::Allow => println!("Access allowed"),

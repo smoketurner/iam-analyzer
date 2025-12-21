@@ -7,6 +7,21 @@ use serde::Serialize;
 use super::matchers::MatchBreakdown;
 
 /// The final decision from policy evaluation.
+///
+/// # Examples
+///
+/// ```
+/// use iam_analyzer::Decision;
+///
+/// // Decisions can be compared
+/// let decision = Decision::Allow;
+/// assert_eq!(decision, Decision::Allow);
+///
+/// // Decisions can be displayed
+/// assert_eq!(Decision::Allow.to_string(), "ALLOW");
+/// assert_eq!(Decision::ExplicitDeny.to_string(), "EXPLICIT_DENY");
+/// assert_eq!(Decision::ImplicitDeny.to_string(), "IMPLICIT_DENY");
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum Decision {
     /// Access is explicitly allowed.
@@ -80,6 +95,18 @@ pub struct ReasoningStep {
 }
 
 /// The complete result of policy evaluation.
+///
+/// # Examples
+///
+/// ```
+/// use iam_analyzer::{EvaluationResult, Decision};
+///
+/// // Create an Allow result
+/// let result = EvaluationResult::allow(vec![]);
+/// assert_eq!(result.decision, Decision::Allow);
+/// assert!(result.reasoning.is_empty());
+/// assert!(result.deciding_policy_type.is_none());
+/// ```
 #[derive(Debug, Clone, Serialize)]
 pub struct EvaluationResult {
     /// The final decision.

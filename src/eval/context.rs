@@ -9,7 +9,40 @@ use super::context_bags::{
 /// Context for an IAM access request.
 ///
 /// Contains all the information needed to evaluate whether an action
-/// should be allowed or denied.
+/// should be allowed or denied. Use [`RequestContext::builder()`] to construct.
+///
+/// # Examples
+///
+/// ```
+/// use iam_analyzer::RequestContext;
+///
+/// // Minimal context with just action and resource
+/// let ctx = RequestContext::builder()
+///     .action("s3:GetObject")
+///     .resource("arn:aws:s3:::my-bucket/file.txt")
+///     .build()
+///     .unwrap();
+///
+/// assert_eq!(ctx.action, "s3:GetObject");
+/// assert_eq!(ctx.resource, "arn:aws:s3:::my-bucket/file.txt");
+/// ```
+///
+/// ```
+/// use iam_analyzer::RequestContext;
+///
+/// // Full context with principal and cross-account detection
+/// let ctx = RequestContext::builder()
+///     .action("s3:GetObject")
+///     .resource("arn:aws:ec2:us-east-1:222222222222:instance/i-123")
+///     .principal_arn("arn:aws:iam::111111111111:user/alice")
+///     .build()
+///     .unwrap();
+///
+/// // Cross-account is auto-detected from different account IDs
+/// assert!(ctx.is_cross_account);
+/// // Principal account is auto-extracted from ARN
+/// assert_eq!(ctx.principal_account, Some("111111111111".to_string()));
+/// ```
 #[derive(Debug, Clone)]
 pub struct RequestContext {
     /// The IAM action being requested (e.g., "s3:GetObject")

@@ -11,9 +11,10 @@ use std::fs;
 
 /// Load a policy from a fixture file.
 fn load_policy(path: &str) -> NamedPolicy {
-    let json = fs::read_to_string(path).expect(&format!("Failed to read policy file: {}", path));
+    let json =
+        fs::read_to_string(path).unwrap_or_else(|_| panic!("Failed to read policy file: {}", path));
     let policy: Policy =
-        serde_json::from_str(&json).expect(&format!("Failed to parse policy: {}", path));
+        serde_json::from_str(&json).unwrap_or_else(|_| panic!("Failed to parse policy: {}", path));
     // Extract just the filename for a cleaner policy name
     let name = std::path::Path::new(path)
         .file_name()

@@ -1,6 +1,19 @@
 //! CLI argument definitions.
 
-use clap::{Parser, ValueEnum};
+use clap::{CommandFactory, Parser, ValueEnum};
+use clap_complete::Shell;
+
+/// Color output preference
+#[derive(Debug, Clone, Copy, ValueEnum, Default)]
+pub enum ColorChoice {
+    /// Enable colors when outputting to a terminal (default)
+    #[default]
+    Auto,
+    /// Always enable colors
+    Always,
+    /// Never use colors
+    Never,
+}
 
 /// Output format options
 #[derive(Debug, Clone, Copy, ValueEnum, Default)]
@@ -64,7 +77,7 @@ pub struct Args {
         short,
         long,
         help_heading = "Request",
-        required_unless_present = "generate_context_template"
+        required_unless_present_any = ["generate_context_template", "completions"]
     )]
     pub action: Option<String>,
 
@@ -73,7 +86,7 @@ pub struct Args {
         short,
         long,
         help_heading = "Request",
-        required_unless_present = "generate_context_template"
+        required_unless_present_any = ["generate_context_template", "completions"]
     )]
     pub resource: Option<String>,
 
@@ -206,13 +219,36 @@ pub struct Args {
     pub update_definitions: bool,
 
     /// Disable network requests (use cached definitions or skip validation)
-    #[arg(long = "offline", help_heading = "Service Definitions")]
+    #[arg(
+        long = "offline",
+        env = "IAM_ANALYZER_OFFLINE",
+        help_heading = "Service Definitions"
+    )]
     pub offline: bool,
 
     // =========================================================================
     // Output Options
     // =========================================================================
     /// Output format: text (default), json, or quiet
-    #[arg(short, long, value_enum, default_value_t = OutputFormat::Text, help_heading = "Output")]
+    #[arg(short, long, value_enum, default_value_t = OutputFormat::Text, env = "IAM_ANALYZER_OUTPUT", help_heading = "Output")]
     pub output: OutputFormat,
+
+    /// Control color output
+    #[arg(long, value_enum, default_value_t = ColorChoice::Auto, env = "IAM_ANALYZER_COLOR", help_heading = "Output")]
+    pub color: ColorChoice,
+
+    /// Generate shell completions and exit
+    ///
+    /// Outputs shell completion script to stdout.
+    /// Supported shells: bash, zsh, fish, powershell
+    #[arg(long = "completions", value_name = "SHELL", help_heading = "Output")]
+    pub completions: Option<Shell>,
+}
+
+impl Args {
+    /// Generate shell completions to stdout.
+    pub fn print_completions(shell: Shell) {
+        let mut cmd = Self::command();
+        clap_complete::generate(shell, &mut cmd, "iam-analyzer", &mut std::io::stdout());
+    }
 }

@@ -15,6 +15,16 @@ use crate::policy::{Effect, Policy};
 type DenyCheckResult = Result<Option<(PolicyType, String, Option<String>, Vec<ReasoningStep>)>>;
 
 /// A named policy with its source file name.
+///
+/// # Examples
+///
+/// ```
+/// use iam_analyzer::{NamedPolicy, Policy};
+///
+/// let policy: Policy = serde_json::from_str(r#"{"Statement": []}"#).unwrap();
+/// let named = NamedPolicy::new("my-policy.json", policy);
+/// assert_eq!(named.name, "my-policy.json");
+/// ```
 #[derive(Debug, Clone)]
 pub struct NamedPolicy {
     /// The policy name or file path.
@@ -35,6 +45,21 @@ pub struct OuScpSet {
 }
 
 /// The SCP/RCP hierarchy for evaluation.
+///
+/// Represents the path from organization root to the principal's account,
+/// with policies at each level.
+///
+/// # Examples
+///
+/// ```
+/// use iam_analyzer::OrganizationHierarchy;
+///
+/// // Create an empty hierarchy (allows everything by default)
+/// let hierarchy = OrganizationHierarchy::default();
+/// assert!(hierarchy.root_scps.is_empty());
+/// assert!(hierarchy.ou_scps.is_empty());
+/// assert!(hierarchy.account_scps.is_empty());
+/// ```
 #[derive(Debug, Clone, Default)]
 pub struct OrganizationHierarchy {
     /// SCPs at organization root level.
@@ -46,6 +71,35 @@ pub struct OrganizationHierarchy {
 }
 
 /// The complete set of policies to evaluate.
+///
+/// Contains all policy types that the evaluation engine considers:
+/// SCPs, RCPs, VPC endpoint policies, identity policies, resource policies,
+/// permission boundaries, and session policies.
+///
+/// # Examples
+///
+/// ```
+/// use iam_analyzer::{PolicySet, NamedPolicy, Policy};
+///
+/// // Create an empty policy set (results in implicit deny)
+/// let policies = PolicySet::default();
+/// assert!(policies.identity_policies.is_empty());
+/// ```
+///
+/// ```
+/// use iam_analyzer::{PolicySet, NamedPolicy, Policy};
+///
+/// // Create a policy set with an identity policy
+/// let policy: Policy = serde_json::from_str(r#"{
+///     "Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}]
+/// }"#).unwrap();
+///
+/// let policies = PolicySet {
+///     identity_policies: vec![NamedPolicy::new("S3ReadPolicy", policy)],
+///     ..Default::default()
+/// };
+/// assert_eq!(policies.identity_policies.len(), 1);
+/// ```
 #[derive(Debug, Clone, Default)]
 pub struct PolicySet {
     /// SCP hierarchy (optional).
@@ -67,6 +121,51 @@ pub struct PolicySet {
 /// The IAM policy evaluation engine.
 ///
 /// Implements the exact AWS IAM policy evaluation logic.
+///
+/// # Examples
+///
+/// ```
+/// use iam_analyzer::{EvaluationEngine, PolicySet, RequestContext, Decision, NamedPolicy, Policy};
+///
+/// let engine = EvaluationEngine::new();
+///
+/// let ctx = RequestContext::builder()
+///     .action("s3:GetObject")
+///     .resource("arn:aws:s3:::bucket/file.txt")
+///     .principal_arn("arn:aws:iam::123456789012:user/alice")
+///     .build()
+///     .unwrap();
+///
+/// // No policies = implicit deny
+/// let result = engine.evaluate(&ctx, &PolicySet::default());
+/// assert_eq!(result.decision, Decision::ImplicitDeny);
+/// ```
+///
+/// ```
+/// use iam_analyzer::{EvaluationEngine, PolicySet, RequestContext, Decision, NamedPolicy, Policy};
+///
+/// // Evaluate with an identity policy that allows the action
+/// let engine = EvaluationEngine::new();
+///
+/// let ctx = RequestContext::builder()
+///     .action("s3:GetObject")
+///     .resource("arn:aws:s3:::my-bucket/file.txt")
+///     .principal_arn("arn:aws:iam::123456789012:user/alice")
+///     .build()
+///     .unwrap();
+///
+/// let policy: Policy = serde_json::from_str(r#"{
+///     "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}]
+/// }"#).unwrap();
+///
+/// let policies = PolicySet {
+///     identity_policies: vec![NamedPolicy::new("S3Admin", policy)],
+///     ..Default::default()
+/// };
+///
+/// let result = engine.evaluate(&ctx, &policies);
+/// assert_eq!(result.decision, Decision::Allow);
+/// ```
 #[derive(Debug, Default)]
 pub struct EvaluationEngine;
 

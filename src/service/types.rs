@@ -4,6 +4,28 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// A service definition from the AWS Service Authorization Reference.
+///
+/// # Examples
+///
+/// ```
+/// use iam_analyzer::ServiceDefinition;
+///
+/// let json = r#"{
+///     "Name": "s3",
+///     "Actions": [
+///         {"Name": "GetObject", "ActionConditionKeys": [], "Resources": []},
+///         {"Name": "PutObject", "ActionConditionKeys": [], "Resources": []}
+///     ],
+///     "Resources": [],
+///     "ConditionKeys": []
+/// }"#;
+///
+/// let service: ServiceDefinition = serde_json::from_str(json).unwrap();
+/// assert_eq!(service.name, "s3");
+/// assert!(service.has_action("GetObject"));
+/// assert!(service.has_action("putobject")); // case-insensitive
+/// assert!(!service.has_action("DeleteObject"));
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct ServiceDefinition {

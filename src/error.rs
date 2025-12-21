@@ -3,7 +3,25 @@
 use thiserror::Error;
 
 /// Main error type for the IAM analyzer.
+///
+/// # Examples
+///
+/// ```
+/// use iam_analyzer::Error;
+///
+/// // Missing field error
+/// let err = Error::MissingField("action".to_string());
+/// assert!(err.to_string().contains("action"));
+///
+/// // Invalid ARN error
+/// let err = Error::InvalidArn(
+///     "not:an:arn".to_string(),
+///     "expected 6 colon-separated parts".to_string()
+/// );
+/// assert!(err.to_string().contains("Invalid ARN"));
+/// ```
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum Error {
     /// Error parsing an ARN.
     #[error("Invalid ARN '{0}': {1}")]

@@ -81,7 +81,7 @@ rcp_hierarchy:
     - rcp/s3-restrict.json
 "#;
 
-        let config: OrganizationConfig = serde_yaml::from_str(yaml).unwrap();
+        let config: OrganizationConfig = serde_yml::from_str(yaml).unwrap();
 
         // Check SCP hierarchy
         let scp = config.scp_hierarchy.unwrap();
@@ -109,7 +109,7 @@ scp_hierarchy:
     - policy.json
 "#;
 
-        let config: OrganizationConfig = serde_yaml::from_str(yaml).unwrap();
+        let config: OrganizationConfig = serde_yml::from_str(yaml).unwrap();
 
         let scp = config.scp_hierarchy.unwrap();
         assert_eq!(scp.root.len(), 1);
@@ -121,7 +121,7 @@ scp_hierarchy:
     #[test]
     fn test_parse_empty_config() {
         let yaml = "{}";
-        let config: OrganizationConfig = serde_yaml::from_str(yaml).unwrap();
+        let config: OrganizationConfig = serde_yml::from_str(yaml).unwrap();
         assert!(config.scp_hierarchy.is_none());
         assert!(config.rcp_hierarchy.is_none());
     }

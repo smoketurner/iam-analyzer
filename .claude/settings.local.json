@@ -18,7 +18,10 @@
       "Bash(./examples/demo.sh)",
       "Bash(grep:*)",
       "Bash(for dir in /Users/jplock/envs/git/iam-analyzer/tests/fixtures/*/)",
-      "Bash(cargo clippy:*)"
+      "Bash(cargo clippy:*)",
+      "Bash(tree:*)",
+      "Bash(tokei:*)",
+      "Bash(cargo tree:*)"
     ]
   }
 }

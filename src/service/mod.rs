@@ -19,6 +19,16 @@ pub use types::{ActionDefinition, ServiceDefinition, ServiceRegistry};
 use crate::error::Result;
 
 /// Service loader that manages fetching and caching of service definitions.
+///
+/// # Examples
+///
+/// ```
+/// use iam_analyzer::ServiceLoader;
+///
+/// // Create a loader in offline mode (no network requests)
+/// let loader = ServiceLoader::new(true);
+/// assert!(loader.is_offline());
+/// ```
 pub struct ServiceLoader {
     cache: Option<ServiceCache>,
     fetcher: Option<ServiceFetcher>,

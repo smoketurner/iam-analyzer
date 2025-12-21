@@ -6,6 +6,17 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// A complete IAM policy document.
+///
+/// # Examples
+///
+/// ```
+/// use iam_analyzer::{Policy, Effect};
+///
+/// let json = r#"{"Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}]}"#;
+/// let policy: Policy = serde_json::from_str(json).unwrap();
+/// assert_eq!(policy.statement.len(), 1);
+/// assert_eq!(policy.statement[0].effect, Effect::Allow);
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct Policy {
@@ -20,6 +31,16 @@ pub struct Policy {
 }
 
 /// A single policy statement.
+///
+/// # Examples
+///
+/// ```
+/// use iam_analyzer::{Statement, Effect};
+///
+/// let json = r#"{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}"#;
+/// let stmt: Statement = serde_json::from_str(json).unwrap();
+/// assert_eq!(stmt.effect, Effect::Allow);
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct Statement {
@@ -52,6 +73,18 @@ pub struct Statement {
 }
 
 /// Effect: Allow or Deny.
+///
+/// # Examples
+///
+/// ```
+/// use iam_analyzer::Effect;
+///
+/// let effect = Effect::Allow;
+/// assert!(matches!(effect, Effect::Allow));
+///
+/// let deny = Effect::Deny;
+/// assert!(matches!(deny, Effect::Deny));
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Effect {
     Allow,
