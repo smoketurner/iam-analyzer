@@ -17,7 +17,7 @@ pub mod principal;
 pub mod variables;
 
 pub use condition_eval::{ConditionEvaluator, ip_in_cidr};
-pub use context::RequestContext;
+pub use context::{RequestContext, RequestContextBuilder};
 pub use context_bags::{
     ConditionValue, ContextBag, NetworkContext, PrincipalContext, RequestBag, ResourceContext,
     SessionContext,

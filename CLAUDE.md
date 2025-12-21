@@ -157,7 +157,69 @@ The following AWS global condition keys are supported via `RequestContext` build
 - `aws:SecureTransport`, `aws:CurrentTime`, `aws:EpochTime`
 - `aws:referer`, `aws:UserAgent`, `aws:IsMcpServiceAction`
 
-Service-specific condition keys (e.g., `iam:PassedToService`, `sts:ExternalId`) can be set via the generic context key mechanism (`--context KEY=VALUE`).
+Service-specific condition keys (e.g., `iam:PassedToService`, `sts:ExternalId`) can be set via the `custom` section in request context files.
+
+## Context Files
+
+The CLI uses three JSON context files to configure evaluation context:
+
+### Principal Context (`--principal-context`)
+
+```json
+{
+  "arn": "arn:aws:iam::123456789012:user/alice",
+  "account": "123456789012",
+  "org_id": "o-abc123def4",
+  "org_paths": ["o-abc123def4/r-ab12/ou-ab12-11111111/"],
+  "userid": "AIDAEXAMPLEUSERID",
+  "username": "alice",
+  "principal_type": "User",
+  "is_aws_service": false,
+  "is_management_account": false,
+  "tags": {"Department": "Engineering"}
+}
+```
+
+### Resource Context (`--resource-context`)
+
+```json
+{
+  "account": "123456789012",
+  "org_id": "o-abc123def4",
+  "org_paths": ["o-abc123def4/r-ab12/ou-ab12-11111111/"],
+  "tags": {"Environment": "Production"}
+}
+```
+
+### Request Context (`--request-context`)
+
+```json
+{
+  "network": {
+    "source_ip": "192.168.1.100",
+    "source_vpc": "vpc-12345678",
+    "source_vpce": "vpce-1a2b3c4d"
+  },
+  "session": {
+    "mfa_present": true,
+    "mfa_auth_age": 300,
+    "source_identity": "alice@example.com"
+  },
+  "request": {
+    "region": "us-east-1",
+    "secure_transport": true,
+    "via_aws_service": false,
+    "called_via": ["athena.amazonaws.com"]
+  },
+  "custom": {
+    "iam:PassedToService": "lambda.amazonaws.com"
+  }
+}
+```
+
+All fields in context files are optional. Use `--generate-context-template` to see all available fields.
+
+The `--principal-arn` flag is a convenience shorthand for specifying just the principal ARN without a full context file.
 
 ## Testing
 

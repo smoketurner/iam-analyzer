@@ -10,6 +10,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 ANALYZER="$PROJECT_ROOT/target/release/iam-analyzer"
 FIXTURES="$PROJECT_ROOT/tests/fixtures"
+CONTEXT="$SCRIPT_DIR/context"
 
 # Check if binary exists
 if [ ! -f "$ANALYZER" ]; then
@@ -102,7 +103,7 @@ $ANALYZER -a s3:GetObject -r arn:aws:s3:::shared-bucket/file.txt \
     -i "$FIXTURES/identity/allow-s3-read.json" \
     -R "$FIXTURES/resource/s3-bucket-cross-account.json" \
     -p arn:aws:iam::111111111111:user/external-user \
-    --resource-account 222222222222
+    --resource-context "$CONTEXT/cross-account-resource.json"
 echo ""
 echo ""
 
@@ -135,13 +136,13 @@ echo ""
 # Scenario 9: MFA required and present
 # -----------------------------------------------------------------------------
 echo "--- Scenario 9: MFA Required for EC2 Terminate (MFA Present) ---"
-echo "Testing: Same setup, but with --mfa-present flag"
+echo "Testing: Same setup, but with MFA context file"
 echo ""
 $ANALYZER -a ec2:TerminateInstances -r "arn:aws:ec2:us-east-1:123456789012:instance/i-12345" \
     -i "$FIXTURES/identity/allow-ec2-full.json" \
     --organization-config "$FIXTURES/organization/mfa-required.yaml" \
     -p arn:aws:iam::123456789012:user/admin \
-    --mfa-present
+    --request-context "$CONTEXT/mfa-present.json"
 echo ""
 echo ""
 
@@ -181,7 +182,7 @@ $ANALYZER -a s3:GetObject -r arn:aws:s3:::secure-bucket/file.txt \
     -i "$FIXTURES/identity/allow-s3-read.json" \
     -R "$FIXTURES/resource/s3-bucket-https-only.json" \
     -p arn:aws:iam::123456789012:user/alice \
-    -c "aws:SecureTransport=false"
+    --request-context "$CONTEXT/insecure-transport.json"
 echo ""
 echo ""
 
@@ -195,7 +196,7 @@ $ANALYZER -a s3:GetObject -r arn:aws:s3:::secure-bucket/file.txt \
     -i "$FIXTURES/identity/allow-s3-read.json" \
     -R "$FIXTURES/resource/s3-bucket-https-only.json" \
     -p arn:aws:iam::123456789012:user/alice \
-    -c "aws:SecureTransport=true"
+    --request-context "$CONTEXT/secure-transport.json"
 echo ""
 echo ""
 

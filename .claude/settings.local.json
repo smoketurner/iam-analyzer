@@ -14,7 +14,10 @@
       "Bash(wc:*)",
       "Bash(find:*)",
       "Bash(chmod:*)",
-      "Bash(/Users/jplock/envs/git/iam-analyzer/examples/demo.sh)"
+      "Bash(/Users/jplock/envs/git/iam-analyzer/examples/demo.sh)",
+      "Bash(./examples/demo.sh)",
+      "Bash(grep:*)",
+      "Bash(for dir in /Users/jplock/envs/git/iam-analyzer/tests/fixtures/*/)"
     ]
   }
 }

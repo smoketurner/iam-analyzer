@@ -24,21 +24,24 @@ EXAMPLES:
         -i policy.json \
         -p arn:aws:iam::123456789012:user/alice
 
-    # Test cross-account S3 access
-    # (cross-account auto-detected when accounts differ)
-    iam-analyzer -a s3:GetObject -r arn:aws:s3:::bucket/key \
-        -i identity.json -R bucket-policy.json \
-        -p arn:aws:iam::111111111111:user/alice \
-        --resource-account 222222222222
-
     # Test with SCP/RCP using organization config file
     iam-analyzer -a ec2:RunInstances -r arn:aws:ec2:eu-west-1:123:instance/* \
         -i policy.json --organization-config org-policies.yaml \
         -p arn:aws:iam::123456789012:user/dev
 
-    # Test with MFA requirement
+    # Test with principal context from file (MFA, org, tags)
     iam-analyzer -a ec2:TerminateInstances -r arn:aws:ec2:*:*:instance/* \
-        -i policy.json --mfa-present
+        -i policy.json --principal-context principal.json
+
+    # Test with all context files
+    iam-analyzer -a s3:PutObject -r arn:aws:s3:::bucket/key \
+        -i policy.json \
+        --principal-context principal.json \
+        --resource-context resource.json \
+        --request-context request.json
+
+    # Generate template context files
+    iam-analyzer --generate-context-template
 
     # Get just the decision (useful for scripts)
     iam-analyzer -a s3:GetObject -r arn:aws:s3:::bucket/key -i policy.json -o quiet
@@ -57,12 +60,12 @@ pub struct Args {
     // Required Arguments
     // =========================================================================
     /// The IAM action to evaluate (e.g., s3:GetObject)
-    #[arg(short, long, help_heading = "Request")]
-    pub action: String,
+    #[arg(short, long, help_heading = "Request", required_unless_present = "generate_context_template")]
+    pub action: Option<String>,
 
     /// The resource ARN to evaluate (e.g., arn:aws:s3:::my-bucket/file.txt)
-    #[arg(short, long, help_heading = "Request")]
-    pub resource: String,
+    #[arg(short, long, help_heading = "Request", required_unless_present = "generate_context_template")]
+    pub resource: Option<String>,
 
     // =========================================================================
     // Policy Files
@@ -124,124 +127,69 @@ pub struct Args {
     pub organization_config: Option<String>,
 
     // =========================================================================
-    // Principal Context
+    // Context Files
     // =========================================================================
-    /// Principal ARN making the request
+    /// Principal ARN making the request (convenience flag)
+    ///
+    /// This is a shorthand for specifying the principal ARN without
+    /// needing a full principal context file.
     #[arg(
         short = 'p',
         long = "principal-arn",
         value_name = "ARN",
-        help_heading = "Principal Context"
+        help_heading = "Context"
     )]
     pub principal_arn: Option<String>,
 
-    /// Account ID of the principal
+    /// Principal context file (JSON format)
+    ///
+    /// Load principal context from a JSON file. Includes:
+    /// - ARN, account, organization info
+    /// - Principal tags
+    /// - Service principal details
+    /// - Management account flag
     #[arg(
-        short = 'A',
-        long = "principal-account",
-        value_name = "ACCOUNT_ID",
-        help_heading = "Principal Context"
-    )]
-    pub principal_account: Option<String>,
-
-    /// The unique identifier of the principal (aws:userid)
-    #[arg(
-        long = "principal-userid",
-        value_name = "USERID",
-        help_heading = "Principal Context"
-    )]
-    pub principal_userid: Option<String>,
-
-    /// Organization ID of the principal (for aws:PrincipalOrgID condition)
-    #[arg(
-        long = "principal-org-id",
-        value_name = "ORG_ID",
-        help_heading = "Principal Context"
-    )]
-    pub principal_org_id: Option<String>,
-
-    /// Organization paths of the principal (aws:PrincipalOrgPaths, can specify multiple)
-    #[arg(
-        long = "principal-org-paths",
-        value_name = "PATH",
-        help_heading = "Principal Context"
-    )]
-    pub principal_org_paths: Vec<String>,
-
-    /// Principal is from the organization's management account (bypasses SCPs)
-    #[arg(long = "management-account", help_heading = "Principal Context")]
-    pub management_account: bool,
-
-    // =========================================================================
-    // Resource Context
-    // =========================================================================
-    /// Account ID that owns the resource (auto-detected from resource ARN when possible)
-    #[arg(
-        long = "resource-account",
-        value_name = "ACCOUNT_ID",
-        help_heading = "Resource Context"
-    )]
-    pub resource_account: Option<String>,
-
-    // =========================================================================
-    // Request Context (Condition Keys)
-    // =========================================================================
-    /// Whether MFA was used for authentication (aws:MultiFactorAuthPresent)
-    #[arg(long = "mfa-present", help_heading = "Request Context")]
-    pub mfa_present: bool,
-
-    /// The AWS region being requested (aws:RequestedRegion)
-    #[arg(
-        long = "requested-region",
-        value_name = "REGION",
-        help_heading = "Request Context"
-    )]
-    pub requested_region: Option<String>,
-
-    /// Whether the request came through an AWS service (aws:ViaAWSService)
-    #[arg(long = "via-aws-service", help_heading = "Request Context")]
-    pub via_aws_service: bool,
-
-    /// Services in the CalledVia chain (can specify multiple, in order)
-    #[arg(
-        long = "called-via",
-        value_name = "SERVICE",
-        help_heading = "Request Context"
-    )]
-    pub called_via: Vec<String>,
-
-    /// Source ARN for service-to-service requests (aws:SourceArn)
-    #[arg(
-        long = "source-arn",
-        value_name = "ARN",
-        help_heading = "Request Context"
-    )]
-    pub source_arn: Option<String>,
-
-    /// Source account for service-to-service requests (aws:SourceAccount)
-    #[arg(
-        long = "source-account",
-        value_name = "ACCOUNT_ID",
-        help_heading = "Request Context"
-    )]
-    pub source_account: Option<String>,
-
-    /// Context key-value pairs (KEY=VALUE format, can specify multiple)
-    #[arg(
-        short,
-        long = "context",
-        value_name = "KEY=VALUE",
-        help_heading = "Request Context"
-    )]
-    pub context: Vec<String>,
-
-    /// JSON file containing additional request context
-    #[arg(
-        long = "context-file",
+        long = "principal-context",
         value_name = "FILE",
-        help_heading = "Request Context"
+        help_heading = "Context"
     )]
-    pub context_file: Option<String>,
+    pub principal_context: Option<String>,
+
+    /// Resource context file (JSON format)
+    ///
+    /// Load resource context from a JSON file. Includes:
+    /// - Account, organization info
+    /// - Resource tags
+    #[arg(
+        long = "resource-context",
+        value_name = "FILE",
+        help_heading = "Context"
+    )]
+    pub resource_context: Option<String>,
+
+    /// Request context file (JSON format)
+    ///
+    /// Load request context from a JSON file. Includes:
+    /// - Network context (source IP, VPC, VPCE)
+    /// - Session context (MFA, federation)
+    /// - Request context (region, CalledVia, tags)
+    /// - Custom/service-specific condition keys
+    #[arg(
+        long = "request-context",
+        value_name = "FILE",
+        help_heading = "Context"
+    )]
+    pub request_context: Option<String>,
+
+    /// Generate template context files
+    ///
+    /// Outputs template JSON files for principal, resource, and request
+    /// context with all available fields documented.
+    #[arg(
+        long = "generate-context-template",
+        help_heading = "Context"
+    )]
+    pub generate_context_template: bool,
 
     // =========================================================================
     // Service Definition Options

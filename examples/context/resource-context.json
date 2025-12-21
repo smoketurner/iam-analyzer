@@ -1,0 +1,9 @@
+{
+  "account": "123456789012",
+  "org_id": "o-abc123def4",
+  "org_paths": ["o-abc123def4/r-ab12/ou-ab12-11111111/"],
+  "tags": {
+    "Environment": "Production",
+    "Classification": "Confidential"
+  }
+}

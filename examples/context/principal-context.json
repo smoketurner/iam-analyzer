@@ -1,0 +1,15 @@
+{
+  "arn": "arn:aws:iam::123456789012:user/alice",
+  "account": "123456789012",
+  "org_id": "o-abc123def4",
+  "org_paths": ["o-abc123def4/r-ab12/ou-ab12-11111111/"],
+  "userid": "AIDAEXAMPLEUSERID",
+  "username": "alice",
+  "principal_type": "User",
+  "is_aws_service": false,
+  "is_management_account": false,
+  "tags": {
+    "Department": "Engineering",
+    "Team": "Platform"
+  }
+}

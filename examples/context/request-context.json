@@ -1,0 +1,24 @@
+{
+  "network": {
+    "source_ip": "192.168.1.100",
+    "source_vpc": "vpc-12345678",
+    "source_vpce": "vpce-1a2b3c4d"
+  },
+  "session": {
+    "mfa_present": true,
+    "mfa_auth_age": 300,
+    "source_identity": "alice@example.com"
+  },
+  "request": {
+    "region": "us-east-1",
+    "secure_transport": true,
+    "via_aws_service": false,
+    "called_via": ["athena.amazonaws.com"],
+    "tags": {
+      "CostCenter": "12345"
+    }
+  },
+  "custom": {
+    "iam:PassedToService": "lambda.amazonaws.com"
+  }
+}
