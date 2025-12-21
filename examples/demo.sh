@@ -27,11 +27,11 @@ echo ""
 # -----------------------------------------------------------------------------
 echo "--- Scenario 1: Identity Policy Allows S3 Access ---"
 echo "Testing: User 'alice' with identity policy allowing s3:Get* and s3:List*"
+echo "(principal account auto-detected from ARN)"
 echo ""
 $ANALYZER -a s3:GetObject -r arn:aws:s3:::my-bucket/file.txt \
     -i "$FIXTURES/identity/allow-s3-read.json" \
-    -p arn:aws:iam::123456789012:user/alice \
-    -A 123456789012
+    -p arn:aws:iam::123456789012:user/alice
 echo ""
 echo ""
 
@@ -44,8 +44,7 @@ echo ""
 $ANALYZER -a s3:DeleteObject -r arn:aws:s3:::my-bucket/file.txt \
     -i "$FIXTURES/identity/allow-s3-full.json" \
     -i "$FIXTURES/identity/deny-s3-delete.json" \
-    -p arn:aws:iam::123456789012:user/alice \
-    -A 123456789012
+    -p arn:aws:iam::123456789012:user/alice
 echo ""
 echo ""
 
@@ -59,8 +58,7 @@ echo ""
 $ANALYZER -a iam:CreateUser -r arn:aws:iam::123456789012:user/newuser \
     -i "$FIXTURES/identity/allow-s3-full.json" \
     --permission-boundary "$FIXTURES/boundaries/s3-cloudwatch-ec2-only.json" \
-    -p arn:aws:iam::123456789012:user/admin \
-    -A 123456789012
+    -p arn:aws:iam::123456789012:user/admin
 echo ""
 echo ""
 
@@ -69,15 +67,13 @@ echo ""
 # -----------------------------------------------------------------------------
 echo "--- Scenario 4: SCP Blocks Non-US Region ---"
 echo "Testing: User can run EC2, but SCP denies outside us-east-1, us-west-2"
-echo "Region: ap-southeast-1 (blocked)"
+echo "Region: ap-southeast-1 (blocked, auto-detected from resource ARN)"
+echo "(using --organization-config for SCP hierarchy)"
 echo ""
 $ANALYZER -a ec2:RunInstances -r "arn:aws:ec2:ap-southeast-1:123456789012:instance/*" \
     -i "$FIXTURES/identity/allow-ec2-full.json" \
-    --scp-root "$FIXTURES/scp/full-aws-access.json" \
-    --scp-account "$FIXTURES/scp/deny-region-outside-us.json" \
-    -p arn:aws:iam::123456789012:user/developer \
-    -A 123456789012 \
-    --requested-region ap-southeast-1
+    --organization-config "$FIXTURES/organization/region-restriction.yaml" \
+    -p arn:aws:iam::123456789012:user/developer
 echo ""
 echo ""
 
@@ -85,15 +81,12 @@ echo ""
 # Scenario 5: SCP allows action in permitted region
 # -----------------------------------------------------------------------------
 echo "--- Scenario 5: SCP Allows US Region ---"
-echo "Testing: Same setup, but in us-east-1 (allowed)"
+echo "Testing: Same setup, but in us-east-1 (allowed, auto-detected from resource ARN)"
 echo ""
 $ANALYZER -a ec2:RunInstances -r "arn:aws:ec2:us-east-1:123456789012:instance/*" \
     -i "$FIXTURES/identity/allow-ec2-full.json" \
-    --scp-root "$FIXTURES/scp/full-aws-access.json" \
-    --scp-account "$FIXTURES/scp/deny-region-outside-us.json" \
-    -p arn:aws:iam::123456789012:user/developer \
-    -A 123456789012 \
-    --requested-region us-east-1
+    --organization-config "$FIXTURES/organization/region-restriction.yaml" \
+    -p arn:aws:iam::123456789012:user/developer
 echo ""
 echo ""
 
@@ -103,14 +96,13 @@ echo ""
 echo "--- Scenario 6: Cross-Account S3 Access (Allowed) ---"
 echo "Testing: User from account 111111111111 accessing bucket in 222222222222"
 echo "Both identity and resource policies allow"
+echo "(cross-account auto-detected when accounts differ)"
 echo ""
 $ANALYZER -a s3:GetObject -r arn:aws:s3:::shared-bucket/file.txt \
     -i "$FIXTURES/identity/allow-s3-read.json" \
     -R "$FIXTURES/resource/s3-bucket-cross-account.json" \
     -p arn:aws:iam::111111111111:user/external-user \
-    -A 111111111111 \
-    --resource-account 222222222222 \
-    --cross-account
+    --resource-account 222222222222
 echo ""
 echo ""
 
@@ -130,13 +122,12 @@ echo ""
 # -----------------------------------------------------------------------------
 echo "--- Scenario 8: MFA Required for EC2 Terminate (No MFA) ---"
 echo "Testing: SCP requires MFA for ec2:TerminateInstances, MFA not present"
+echo "(using --organization-config for SCP hierarchy)"
 echo ""
 $ANALYZER -a ec2:TerminateInstances -r "arn:aws:ec2:us-east-1:123456789012:instance/i-12345" \
     -i "$FIXTURES/identity/allow-ec2-full.json" \
-    --scp-root "$FIXTURES/scp/full-aws-access.json" \
-    --scp-account "$FIXTURES/scp/require-mfa-ec2-terminate.json" \
-    -p arn:aws:iam::123456789012:user/admin \
-    -A 123456789012
+    --organization-config "$FIXTURES/organization/mfa-required.yaml" \
+    -p arn:aws:iam::123456789012:user/admin
 echo ""
 echo ""
 
@@ -148,10 +139,8 @@ echo "Testing: Same setup, but with --mfa-present flag"
 echo ""
 $ANALYZER -a ec2:TerminateInstances -r "arn:aws:ec2:us-east-1:123456789012:instance/i-12345" \
     -i "$FIXTURES/identity/allow-ec2-full.json" \
-    --scp-root "$FIXTURES/scp/full-aws-access.json" \
-    --scp-account "$FIXTURES/scp/require-mfa-ec2-terminate.json" \
+    --organization-config "$FIXTURES/organization/mfa-required.yaml" \
     -p arn:aws:iam::123456789012:user/admin \
-    -A 123456789012 \
     --mfa-present
 echo ""
 echo ""
@@ -165,8 +154,7 @@ echo ""
 $ANALYZER -a s3:PutObject -r arn:aws:s3:::my-bucket/file.txt \
     -i "$FIXTURES/identity/allow-s3-full.json" \
     --session-policy "$FIXTURES/session/read-only-session.json" \
-    -p arn:aws:sts::123456789012:assumed-role/AdminRole/session \
-    -A 123456789012
+    -p arn:aws:sts::123456789012:assumed-role/AdminRole/session
 echo ""
 echo ""
 
@@ -179,8 +167,7 @@ echo ""
 $ANALYZER -a dynamodb:GetItem -r arn:aws:dynamodb:us-east-1:123456789012:table/Users \
     -i "$FIXTURES/identity/allow-dynamodb-read.json" \
     --vpc-endpoint-policy "$FIXTURES/vpc-endpoint/s3-read-only.json" \
-    -p arn:aws:iam::123456789012:user/alice \
-    -A 123456789012
+    -p arn:aws:iam::123456789012:user/alice
 echo ""
 echo ""
 
@@ -194,7 +181,6 @@ $ANALYZER -a s3:GetObject -r arn:aws:s3:::secure-bucket/file.txt \
     -i "$FIXTURES/identity/allow-s3-read.json" \
     -R "$FIXTURES/resource/s3-bucket-https-only.json" \
     -p arn:aws:iam::123456789012:user/alice \
-    -A 123456789012 \
     -c "aws:SecureTransport=false"
 echo ""
 echo ""
@@ -209,7 +195,6 @@ $ANALYZER -a s3:GetObject -r arn:aws:s3:::secure-bucket/file.txt \
     -i "$FIXTURES/identity/allow-s3-read.json" \
     -R "$FIXTURES/resource/s3-bucket-https-only.json" \
     -p arn:aws:iam::123456789012:user/alice \
-    -A 123456789012 \
     -c "aws:SecureTransport=true"
 echo ""
 echo ""
@@ -220,12 +205,12 @@ echo ""
 echo "--- Scenario 14: RCP Restricts S3 to Organization ---"
 echo "Testing: RCP requires principal from org o-exampleorg"
 echo "Principal without org ID (should be denied)"
+echo "(using --organization-config for RCP hierarchy)"
 echo ""
 $ANALYZER -a s3:GetObject -r arn:aws:s3:::org-bucket/file.txt \
     -i "$FIXTURES/identity/allow-s3-read.json" \
-    --rcp-root "$FIXTURES/rcp/restrict-s3-to-org.json" \
-    -p arn:aws:iam::123456789012:user/alice \
-    -A 123456789012
+    --organization-config "$FIXTURES/organization/rcp-org-only.yaml" \
+    -p arn:aws:iam::123456789012:user/alice
 echo ""
 echo ""
 
@@ -239,21 +224,18 @@ echo -n "Allow case: "
 $ANALYZER -a s3:GetObject -r arn:aws:s3:::bucket/key \
     -i "$FIXTURES/identity/allow-s3-read.json" \
     -p arn:aws:iam::123456789012:user/alice \
-    -A 123456789012 \
     -o quiet
 
 echo -n "Explicit deny case: "
 $ANALYZER -a s3:DeleteObject -r arn:aws:s3:::bucket/key \
     -i "$FIXTURES/identity/deny-s3-delete.json" \
     -p arn:aws:iam::123456789012:user/alice \
-    -A 123456789012 \
     -o quiet
 
 echo -n "Implicit deny case: "
 $ANALYZER -a iam:CreateUser -r arn:aws:iam::123456789012:user/newuser \
     -i "$FIXTURES/identity/allow-s3-read.json" \
     -p arn:aws:iam::123456789012:user/alice \
-    -A 123456789012 \
     -o quiet
 echo ""
 

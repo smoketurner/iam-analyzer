@@ -1,0 +1,29 @@
+# Example organization policies configuration
+#
+# This file demonstrates the YAML format for loading SCP and RCP hierarchies.
+# Paths are relative to this configuration file.
+#
+# The hierarchy represents the path from organization root to the principal's account.
+# Each level (root, each OU, account) must have at least one Allow for the request to proceed.
+
+scp_hierarchy:
+  # Policies at organization root level
+  root:
+    - ../scp/full-aws-access.json
+
+  # OU-level policies (ordered from root to account)
+  ous:
+    - id: ou-engineering
+      name: Engineering
+      policies:
+        - ../scp/full-aws-access.json
+
+  # Policies at account level
+  account:
+    - ../scp/deny-region-outside-us.json
+
+# RCP hierarchy (same structure as SCP)
+rcp_hierarchy:
+  root: []
+  ous: []
+  account: []

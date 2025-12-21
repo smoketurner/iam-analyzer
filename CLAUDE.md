@@ -54,6 +54,7 @@ cargo test -- --nocapture
 - **`src/cli/`** - CLI implementation
   - `args.rs` - Clap argument definitions
   - `mod.rs` - CLI execution, policy loading, context building
+  - `org_config.rs` - Organization config YAML parsing for SCP/RCP hierarchies
 
 ### Evaluation Flow
 
@@ -97,9 +98,14 @@ Adding a new condition key only requires calling the appropriate builder method 
 ### Auto-Detection Features
 
 The `RequestContext` builder automatically detects:
+- **Principal account** - Extracted from principal ARN when in standard format
 - **Resource account** - Parsed from resource ARN when in standard format
+- **Requested region** - Extracted from resource ARN (e.g., `us-west-2` from EC2 ARN)
+- **Source account** - Extracted from source ARN when provided
 - **Cross-account** - Detected when principal and resource accounts differ
 - **Service-linked role** - Detected from principal ARN pattern (`role/aws-service-role/*`)
+
+These auto-detections reduce the number of required CLI flags. Explicit values always override auto-detected ones.
 
 ### Output Formats
 
@@ -168,6 +174,34 @@ Fixtures are organized by policy type:
 - `tests/fixtures/session/` - Session policies
 - `tests/fixtures/vpc-endpoint/` - VPC endpoint policies
 - `tests/fixtures/conditions/` - Condition operator test cases
+- `tests/fixtures/organization/` - Organization config YAML files for SCP/RCP hierarchies
+
+## Organization Config Format
+
+SCP and RCP hierarchies can be loaded from a single YAML file using `--organization-config`:
+
+```yaml
+# Organization policies configuration
+# Represents the path from org root to the principal's account
+
+scp_hierarchy:
+  root:                          # Policies at org root (list of paths)
+    - path/to/root-scp.json
+  ous:                           # OU-level policies (ordered root to account)
+    - id: ou-engineering         # Required: OU identifier (for error messages)
+      name: Engineering          # Optional: Human-readable name
+      policies:                  # Required: List of policy file paths
+        - path/to/ou-scp.json
+  account:                       # Policies attached to the principal's account
+    - path/to/account-scp.json
+
+rcp_hierarchy:                   # Same structure for RCPs
+  root: []
+  ous: []
+  account: []
+```
+
+Paths are relative to the config file location. AWS SCPs use AND logic between levels (every level must allow) but OR logic within a level (any policy at a level can provide the allow).
 
 ## Demo Script
 

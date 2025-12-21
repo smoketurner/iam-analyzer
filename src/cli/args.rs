@@ -19,22 +19,22 @@ pub enum OutputFormat {
 const EXAMPLES: &str = r#"
 EXAMPLES:
     # Test if an identity policy allows S3 access
+    # (principal account auto-detected from ARN)
     iam-analyzer -a s3:GetObject -r arn:aws:s3:::bucket/key \
         -i policy.json \
-        -p arn:aws:iam::123456789012:user/alice \
-        -A 123456789012
+        -p arn:aws:iam::123456789012:user/alice
 
     # Test cross-account S3 access
+    # (cross-account auto-detected when accounts differ)
     iam-analyzer -a s3:GetObject -r arn:aws:s3:::bucket/key \
         -i identity.json -R bucket-policy.json \
-        -A 111111111111 --resource-account 222222222222 \
-        --cross-account
+        -p arn:aws:iam::111111111111:user/alice \
+        --resource-account 222222222222
 
-    # Test with SCP region restrictions
+    # Test with SCP/RCP using organization config file
     iam-analyzer -a ec2:RunInstances -r arn:aws:ec2:eu-west-1:123:instance/* \
-        -i policy.json --scp-root scp.json \
-        -p arn:aws:iam::123456789012:user/dev \
-        --requested-region eu-west-1
+        -i policy.json --organization-config org-policies.yaml \
+        -p arn:aws:iam::123456789012:user/dev
 
     # Test with MFA requirement
     iam-analyzer -a ec2:TerminateInstances -r arn:aws:ec2:*:*:instance/* \
@@ -112,53 +112,16 @@ pub struct Args {
     // =========================================================================
     // Organization Policies (SCPs and RCPs)
     // =========================================================================
-    /// SCP at organization root level (can specify multiple)
+    /// Organization policies configuration file (YAML format)
+    ///
+    /// Load SCP and RCP hierarchies from a single YAML file instead of
+    /// multiple CLI flags. See documentation for the expected format.
     #[arg(
-        long = "scp-root",
+        long = "organization-config",
         value_name = "FILE",
         help_heading = "Organization Policies"
     )]
-    pub scp_root: Vec<String>,
-
-    /// SCP at OU level (can specify multiple, ordered from root to account)
-    #[arg(
-        long = "scp-ou",
-        value_name = "FILE",
-        help_heading = "Organization Policies"
-    )]
-    pub scp_ou: Vec<String>,
-
-    /// SCP at account level (can specify multiple)
-    #[arg(
-        long = "scp-account",
-        value_name = "FILE",
-        help_heading = "Organization Policies"
-    )]
-    pub scp_account: Vec<String>,
-
-    /// RCP at organization root level (can specify multiple)
-    #[arg(
-        long = "rcp-root",
-        value_name = "FILE",
-        help_heading = "Organization Policies"
-    )]
-    pub rcp_root: Vec<String>,
-
-    /// RCP at OU level (can specify multiple, ordered from root to account)
-    #[arg(
-        long = "rcp-ou",
-        value_name = "FILE",
-        help_heading = "Organization Policies"
-    )]
-    pub rcp_ou: Vec<String>,
-
-    /// RCP at account level (can specify multiple)
-    #[arg(
-        long = "rcp-account",
-        value_name = "FILE",
-        help_heading = "Organization Policies"
-    )]
-    pub rcp_account: Vec<String>,
+    pub organization_config: Option<String>,
 
     // =========================================================================
     // Principal Context
@@ -209,24 +172,16 @@ pub struct Args {
     #[arg(long = "management-account", help_heading = "Principal Context")]
     pub management_account: bool,
 
-    /// Principal is a service-linked role (bypasses SCPs)
-    #[arg(long = "service-linked-role", help_heading = "Principal Context")]
-    pub service_linked_role: bool,
-
     // =========================================================================
     // Resource Context
     // =========================================================================
-    /// Account ID that owns the resource
+    /// Account ID that owns the resource (auto-detected from resource ARN when possible)
     #[arg(
         long = "resource-account",
         value_name = "ACCOUNT_ID",
         help_heading = "Resource Context"
     )]
     pub resource_account: Option<String>,
-
-    /// Treat this as a cross-account request
-    #[arg(long = "cross-account", help_heading = "Resource Context")]
-    pub cross_account: bool,
 
     // =========================================================================
     // Request Context (Condition Keys)

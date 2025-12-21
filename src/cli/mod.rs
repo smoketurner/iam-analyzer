@@ -1,6 +1,7 @@
 //! CLI implementation for the IAM analyzer.
 
 mod args;
+mod org_config;
 
 use args::{Args, OutputFormat};
 use clap::Parser;
@@ -174,83 +175,112 @@ fn build_policy_set(args: &Args) -> Result<PolicySet> {
             .push(load_policy(Path::new(path))?);
     }
 
-    // Build SCP hierarchy
-    let scp_hierarchy = build_scp_hierarchy(args)?;
-    if scp_hierarchy.root_scps.is_empty()
-        && scp_hierarchy.ou_scps.is_empty()
-        && scp_hierarchy.account_scps.is_empty()
-    {
-        // No SCPs provided
-    } else {
-        policies.scp_hierarchy = Some(scp_hierarchy);
-    }
+    // Load organization config if provided
+    if let Some(config_path) = &args.organization_config {
+        let (scp_hierarchy, rcp_hierarchy) = load_organization_config(config_path)?;
 
-    // Build RCP hierarchy
-    let rcp_hierarchy = build_rcp_hierarchy(args)?;
-    if rcp_hierarchy.root_scps.is_empty()
-        && rcp_hierarchy.ou_scps.is_empty()
-        && rcp_hierarchy.account_scps.is_empty()
-    {
-        // No RCPs provided
-    } else {
-        policies.rcp_hierarchy = Some(rcp_hierarchy);
+        if let Some(hierarchy) = scp_hierarchy {
+            if !hierarchy.root_scps.is_empty()
+                || !hierarchy.ou_scps.is_empty()
+                || !hierarchy.account_scps.is_empty()
+            {
+                policies.scp_hierarchy = Some(hierarchy);
+            }
+        }
+
+        if let Some(hierarchy) = rcp_hierarchy {
+            if !hierarchy.root_scps.is_empty()
+                || !hierarchy.ou_scps.is_empty()
+                || !hierarchy.account_scps.is_empty()
+            {
+                policies.rcp_hierarchy = Some(hierarchy);
+            }
+        }
     }
 
     Ok(policies)
 }
 
-/// Build the SCP hierarchy from CLI arguments.
-fn build_scp_hierarchy(args: &Args) -> Result<OrganizationHierarchy> {
+/// Load organization config from YAML file.
+///
+/// Returns (SCP hierarchy, RCP hierarchy) - each is Option since they may not be present.
+fn load_organization_config(
+    config_path: &str,
+) -> Result<(Option<OrganizationHierarchy>, Option<OrganizationHierarchy>)> {
+    let content = fs::read_to_string(config_path).map_err(|e| Error::FileRead {
+        path: config_path.to_string(),
+        source: e,
+    })?;
+
+    let config: org_config::OrganizationConfig = serde_yaml::from_str(&content).map_err(|e| {
+        Error::Other(format!(
+            "Failed to parse organization config '{}': {}",
+            config_path, e
+        ))
+    })?;
+
+    // Get the base directory for resolving relative paths
+    let base_dir = Path::new(config_path).parent().unwrap_or(Path::new("."));
+
+    let scp_hierarchy = if let Some(scp_config) = config.scp_hierarchy {
+        Some(build_hierarchy_from_config(&scp_config, base_dir)?)
+    } else {
+        None
+    };
+
+    let rcp_hierarchy = if let Some(rcp_config) = config.rcp_hierarchy {
+        Some(build_hierarchy_from_config(&rcp_config, base_dir)?)
+    } else {
+        None
+    };
+
+    Ok((scp_hierarchy, rcp_hierarchy))
+}
+
+/// Build organization hierarchy from config.
+fn build_hierarchy_from_config(
+    config: &org_config::HierarchyConfig,
+    base_dir: &Path,
+) -> Result<OrganizationHierarchy> {
     let mut hierarchy = OrganizationHierarchy::default();
 
-    // Load root SCPs
-    for path in &args.scp_root {
-        hierarchy.root_scps.push(load_policy(Path::new(path))?);
+    // Load root policies
+    for path in &config.root {
+        let full_path = resolve_path(path, base_dir);
+        hierarchy.root_scps.push(load_policy(&full_path)?);
     }
 
-    // Load OU SCPs (each path is one OU level)
-    for (i, path) in args.scp_ou.iter().enumerate() {
-        let policy = load_policy(Path::new(path))?;
+    // Load OU policies
+    for ou in &config.ous {
+        let mut ou_policies = Vec::new();
+        for path in &ou.policies {
+            let full_path = resolve_path(path, base_dir);
+            ou_policies.push(load_policy(&full_path)?);
+        }
         hierarchy.ou_scps.push(OuScpSet {
-            ou_id: format!("ou-{}", i),
-            ou_name: None,
-            policies: vec![policy],
+            ou_id: ou.id.clone(),
+            ou_name: ou.name.clone(),
+            policies: ou_policies,
         });
     }
 
-    // Load account SCPs
-    for path in &args.scp_account {
-        hierarchy.account_scps.push(load_policy(Path::new(path))?);
+    // Load account policies
+    for path in &config.account {
+        let full_path = resolve_path(path, base_dir);
+        hierarchy.account_scps.push(load_policy(&full_path)?);
     }
 
     Ok(hierarchy)
 }
 
-/// Build the RCP hierarchy from CLI arguments.
-fn build_rcp_hierarchy(args: &Args) -> Result<OrganizationHierarchy> {
-    let mut hierarchy = OrganizationHierarchy::default();
-
-    // Load root RCPs
-    for path in &args.rcp_root {
-        hierarchy.root_scps.push(load_policy(Path::new(path))?);
+/// Resolve a path relative to a base directory.
+fn resolve_path(path: &str, base_dir: &Path) -> std::path::PathBuf {
+    let p = Path::new(path);
+    if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        base_dir.join(p)
     }
-
-    // Load OU RCPs
-    for (i, path) in args.rcp_ou.iter().enumerate() {
-        let policy = load_policy(Path::new(path))?;
-        hierarchy.ou_scps.push(OuScpSet {
-            ou_id: format!("ou-{}", i),
-            ou_name: None,
-            policies: vec![policy],
-        });
-    }
-
-    // Load account RCPs
-    for path in &args.rcp_account {
-        hierarchy.account_scps.push(load_policy(Path::new(path))?);
-    }
-
-    Ok(hierarchy)
 }
 
 /// Build the request context from CLI arguments.
@@ -271,9 +301,7 @@ fn build_request_context(args: &Args) -> Result<RequestContext> {
         builder = builder.resource_account(account);
     }
 
-    if args.cross_account {
-        builder = builder.cross_account(true);
-    }
+    // Note: cross_account is now auto-detected from principal and resource accounts
 
     if args.management_account {
         builder = builder.management_account(true);
@@ -315,9 +343,7 @@ fn build_request_context(args: &Args) -> Result<RequestContext> {
         builder = builder.called_via(service);
     }
 
-    if args.service_linked_role {
-        builder = builder.service_linked_role(true);
-    }
+    // Note: service_linked_role is now auto-detected from principal ARN
 
     // Load context from file if provided
     if let Some(context_file) = &args.context_file {

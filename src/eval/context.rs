@@ -757,6 +757,19 @@ impl RequestContextBuilder {
             .resource
             .ok_or_else(|| crate::error::Error::MissingField("resource".to_string()))?;
 
+        // Auto-detect principal account from principal ARN if not explicitly set
+        let principal_account = self.principal_account.or_else(|| {
+            self.principal_arn.as_ref().and_then(|arn| {
+                if arn.starts_with("arn:") {
+                    crate::arn::Arn::parse(arn)
+                        .ok()
+                        .and_then(|parsed| parsed.account_id().map(|s| s.to_string()))
+                } else {
+                    None
+                }
+            })
+        });
+
         // Auto-detect resource account from resource ARN if not explicitly set
         let resource_account = self.resource_account.or_else(|| {
             // Try to parse the resource as an ARN and extract the account
@@ -769,9 +782,37 @@ impl RequestContextBuilder {
             }
         });
 
+        // Auto-detect requested region from resource ARN if not explicitly set
+        let requested_region = self.requested_region.or_else(|| {
+            if resource.starts_with("arn:") {
+                crate::arn::Arn::parse(&resource).ok().and_then(|arn| {
+                    if arn.region.is_empty() {
+                        None
+                    } else {
+                        Some(arn.region)
+                    }
+                })
+            } else {
+                None
+            }
+        });
+
+        // Auto-detect source account from source ARN if not explicitly set
+        let source_account = self.source_account.or_else(|| {
+            self.source_arn.as_ref().and_then(|arn| {
+                if arn.starts_with("arn:") {
+                    crate::arn::Arn::parse(arn)
+                        .ok()
+                        .and_then(|parsed| parsed.account_id().map(|s| s.to_string()))
+                } else {
+                    None
+                }
+            })
+        });
+
         // Determine if cross-account based on principal and resource accounts
         let is_cross_account = self.is_cross_account
-            || match (&self.principal_account, &resource_account) {
+            || match (&principal_account, &resource_account) {
                 (Some(p), Some(r)) => p != r,
                 _ => false,
             };
@@ -793,20 +834,37 @@ impl RequestContextBuilder {
             );
         }
 
+        // Populate aws:PrincipalAccount with auto-detected or explicit value
+        if let Some(ref acct) = principal_account {
+            principal_ctx.set("aws:principalaccount", ConditionValue::String(acct.clone()));
+        }
+
+        // Populate request context with auto-detected values
+        let mut request_ctx = self.request_ctx;
+        if let Some(ref region) = requested_region {
+            request_ctx.set(
+                "aws:requestedregion",
+                ConditionValue::String(region.clone()),
+            );
+        }
+        if let Some(ref acct) = source_account {
+            request_ctx.set("aws:sourceaccount", ConditionValue::String(acct.clone()));
+        }
+
         Ok(RequestContext {
             action,
             resource,
             principal_arn: self.principal_arn,
-            principal_account: self.principal_account,
+            principal_account,
             resource_account,
             is_cross_account,
             is_management_account: self.is_management_account,
             principal_org_id: self.principal_org_id,
             principal_org_paths: self.principal_org_paths,
             source_arn: self.source_arn,
-            source_account: self.source_account,
+            source_account,
             mfa_present: self.mfa_present,
-            requested_region: self.requested_region,
+            requested_region,
             via_aws_service: self.via_aws_service,
             principal_userid: self.principal_userid,
             called_via_chain: self.called_via_chain,
@@ -833,7 +891,7 @@ impl RequestContextBuilder {
             // Context bags (new architecture)
             principal_ctx,
             resource_ctx: self.resource_ctx,
-            request_ctx: self.request_ctx,
+            request_ctx,
             network_ctx: self.network_ctx,
             session_ctx: self.session_ctx,
         })
@@ -1254,5 +1312,145 @@ mod tests {
             ctx.get_condition_value("aws:CalledViaLast"),
             Some(vec!["glue.amazonaws.com".to_string()])
         );
+    }
+
+    // =========================================================================
+    // Auto-Detection Feature Tests
+    // =========================================================================
+
+    #[test]
+    fn test_auto_detect_principal_account_from_arn() {
+        let ctx = RequestContext::builder()
+            .action("s3:GetObject")
+            .resource("arn:aws:s3:::bucket/key")
+            .principal_arn("arn:aws:iam::123456789012:user/alice")
+            .build()
+            .unwrap();
+
+        // Principal account should be auto-detected from principal ARN
+        assert_eq!(ctx.principal_account, Some("123456789012".to_string()));
+        // Should also be available as condition key
+        assert_eq!(
+            ctx.get_condition_value("aws:PrincipalAccount"),
+            Some(vec!["123456789012".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_explicit_principal_account_overrides_arn() {
+        let ctx = RequestContext::builder()
+            .action("s3:GetObject")
+            .resource("arn:aws:s3:::bucket/key")
+            .principal_arn("arn:aws:iam::123456789012:user/alice")
+            .principal_account("999999999999")
+            .build()
+            .unwrap();
+
+        // Explicit principal account should take precedence
+        assert_eq!(ctx.principal_account, Some("999999999999".to_string()));
+    }
+
+    #[test]
+    fn test_auto_detect_requested_region_from_resource_arn() {
+        let ctx = RequestContext::builder()
+            .action("ec2:RunInstances")
+            .resource("arn:aws:ec2:us-west-2:123456789012:instance/*")
+            .build()
+            .unwrap();
+
+        // Region should be auto-detected from resource ARN
+        assert_eq!(ctx.requested_region, Some("us-west-2".to_string()));
+        // Should also be available as condition key
+        assert_eq!(
+            ctx.get_condition_value("aws:RequestedRegion"),
+            Some(vec!["us-west-2".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_no_region_for_global_service() {
+        let ctx = RequestContext::builder()
+            .action("s3:GetObject")
+            .resource("arn:aws:s3:::bucket/key")
+            .build()
+            .unwrap();
+
+        // S3 bucket ARNs have no region
+        assert_eq!(ctx.requested_region, None);
+    }
+
+    #[test]
+    fn test_explicit_region_overrides_arn() {
+        let ctx = RequestContext::builder()
+            .action("ec2:RunInstances")
+            .resource("arn:aws:ec2:us-west-2:123456789012:instance/*")
+            .requested_region("eu-west-1")
+            .build()
+            .unwrap();
+
+        // Explicit region should take precedence
+        assert_eq!(ctx.requested_region, Some("eu-west-1".to_string()));
+    }
+
+    #[test]
+    fn test_auto_detect_source_account_from_source_arn() {
+        let ctx = RequestContext::builder()
+            .action("s3:GetObject")
+            .resource("arn:aws:s3:::bucket/key")
+            .source_arn("arn:aws:sns:us-east-1:111111111111:topic")
+            .build()
+            .unwrap();
+
+        // Source account should be auto-detected from source ARN
+        assert_eq!(ctx.source_account, Some("111111111111".to_string()));
+        // Should also be available as condition key
+        assert_eq!(
+            ctx.get_condition_value("aws:SourceAccount"),
+            Some(vec!["111111111111".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_explicit_source_account_overrides_arn() {
+        let ctx = RequestContext::builder()
+            .action("s3:GetObject")
+            .resource("arn:aws:s3:::bucket/key")
+            .source_arn("arn:aws:sns:us-east-1:111111111111:topic")
+            .source_account("222222222222")
+            .build()
+            .unwrap();
+
+        // Explicit source account should take precedence
+        assert_eq!(ctx.source_account, Some("222222222222".to_string()));
+    }
+
+    #[test]
+    fn test_cross_account_auto_detected_from_principal_and_resource_arns() {
+        let ctx = RequestContext::builder()
+            .action("ec2:DescribeInstances")
+            .resource("arn:aws:ec2:us-east-1:222222222222:instance/i-123")
+            .principal_arn("arn:aws:iam::111111111111:user/alice")
+            .build()
+            .unwrap();
+
+        // Both accounts auto-detected, cross-account should be true
+        assert_eq!(ctx.principal_account, Some("111111111111".to_string()));
+        assert_eq!(ctx.resource_account, Some("222222222222".to_string()));
+        assert!(ctx.is_cross_account);
+    }
+
+    #[test]
+    fn test_same_account_from_arns() {
+        let ctx = RequestContext::builder()
+            .action("ec2:DescribeInstances")
+            .resource("arn:aws:ec2:us-east-1:123456789012:instance/i-123")
+            .principal_arn("arn:aws:iam::123456789012:user/alice")
+            .build()
+            .unwrap();
+
+        // Both accounts same, not cross-account
+        assert_eq!(ctx.principal_account, Some("123456789012".to_string()));
+        assert_eq!(ctx.resource_account, Some("123456789012".to_string()));
+        assert!(!ctx.is_cross_account);
     }
 }

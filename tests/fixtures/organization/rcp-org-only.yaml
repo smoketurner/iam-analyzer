@@ -1,0 +1,13 @@
+# Organization config for RCP demo
+# RCP restricts S3 access to organization members only
+
+scp_hierarchy:
+  root: []
+  ous: []
+  account: []
+
+rcp_hierarchy:
+  root:
+    - ../rcp/restrict-s3-to-org.json
+  ous: []
+  account: []
