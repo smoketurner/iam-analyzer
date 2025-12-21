@@ -109,9 +109,15 @@ impl EvaluationEngine {
     ) -> Result<EvaluationResult> {
         let mut all_reasoning = Vec::new();
 
+        // Check if this is an anonymous request (no principal)
+        // Anonymous requests bypass SCPs, permission boundaries, and session policies
+        // but NOT RCPs or VPC endpoint policies (which protect resources/network)
+        let is_anonymous = context.principal_arn.is_none() && context.principal_account.is_none();
+
         // Step 1: Check for EXPLICIT DENY across ALL policies
         // Explicit deny in any policy type immediately denies the request
-        let deny_result = self.check_all_explicit_denies(context, policies)?;
+        // For anonymous requests, only check resource policies for explicit deny
+        let deny_result = self.check_all_explicit_denies(context, policies, is_anonymous)?;
         if let Some((policy_type, policy_name, statement_sid, reasoning)) = deny_result {
             all_reasoning.extend(reasoning);
             return Ok(EvaluationResult::explicit_deny(
@@ -126,9 +132,21 @@ impl EvaluationEngine {
         }
 
         // Step 2: Check SCP hierarchy (if present)
+        // Anonymous requests bypass SCPs (no principal in organization)
         if let Some(scp_hierarchy) = &policies.scp_hierarchy {
-            // Management account principals and service-linked roles bypass SCPs
-            if context.is_management_account {
+            // Anonymous requests, management account principals, and service-linked roles bypass SCPs
+            if is_anonymous {
+                let step = ReasoningStep {
+                    policy_type: PolicyType::Scp,
+                    policy_name: String::new(),
+                    statement_sid: None,
+                    matched: false,
+                    effect: None,
+                    details: "Anonymous request - SCPs bypassed".to_string(),
+                    breakdown: None,
+                };
+                all_reasoning.push(step);
+            } else if context.is_management_account {
                 let step = ReasoningStep {
                     policy_type: PolicyType::Scp,
                     policy_name: String::new(),
@@ -210,7 +228,8 @@ impl EvaluationEngine {
         }
 
         // Step 5: Check permission boundaries (if present)
-        if !policies.permission_boundaries.is_empty() {
+        // Anonymous requests bypass permission boundaries (no principal to attach boundary to)
+        if !policies.permission_boundaries.is_empty() && !is_anonymous {
             let (has_allow, reasoning) = check_allows(
                 &policies.permission_boundaries,
                 context,
@@ -227,7 +246,8 @@ impl EvaluationEngine {
         }
 
         // Step 6: Check session policies (if present)
-        if !policies.session_policies.is_empty() {
+        // Anonymous requests bypass session policies (no session)
+        if !policies.session_policies.is_empty() && !is_anonymous {
             let (has_allow, reasoning) = check_allows(
                 &policies.session_policies,
                 context,
@@ -309,29 +329,33 @@ impl EvaluationEngine {
     }
 
     /// Check for explicit deny across all policy types.
+    /// For anonymous requests, only checks resource policies (and RCPs/VPC endpoint).
     fn check_all_explicit_denies(
         &self,
         context: &RequestContext,
         policies: &PolicySet,
+        is_anonymous: bool,
     ) -> Result<Option<(PolicyType, String, Option<String>, Vec<ReasoningStep>)>> {
-        // Check SCP hierarchy for denies
-        if let Some(hierarchy) = &policies.scp_hierarchy {
-            let all_scps: Vec<_> = hierarchy
-                .root_scps
-                .iter()
-                .chain(hierarchy.ou_scps.iter().flat_map(|ou| &ou.policies))
-                .chain(&hierarchy.account_scps)
-                .cloned()
-                .collect();
+        // Check SCP hierarchy for denies (skip for anonymous - no principal in org)
+        if !is_anonymous {
+            if let Some(hierarchy) = &policies.scp_hierarchy {
+                let all_scps: Vec<_> = hierarchy
+                    .root_scps
+                    .iter()
+                    .chain(hierarchy.ou_scps.iter().flat_map(|ou| &ou.policies))
+                    .chain(&hierarchy.account_scps)
+                    .cloned()
+                    .collect();
 
-            if let Some((policy, sid, reasoning)) =
-                check_explicit_deny(&all_scps, context, PolicyType::Scp)?
-            {
-                return Ok(Some((PolicyType::Scp, policy, sid, reasoning)));
+                if let Some((policy, sid, reasoning)) =
+                    check_explicit_deny(&all_scps, context, PolicyType::Scp)?
+                {
+                    return Ok(Some((PolicyType::Scp, policy, sid, reasoning)));
+                }
             }
         }
 
-        // Check RCP hierarchy for denies
+        // Check RCP hierarchy for denies (RCPs still apply to anonymous - they protect resources)
         if let Some(hierarchy) = &policies.rcp_hierarchy {
             let all_rcps: Vec<_> = hierarchy
                 .root_scps
@@ -348,7 +372,7 @@ impl EvaluationEngine {
             }
         }
 
-        // Check VPC endpoint policies
+        // Check VPC endpoint policies (still apply to anonymous - network level)
         if let Some((policy, sid, reasoning)) = check_explicit_deny(
             &policies.vpc_endpoint_policies,
             context,
@@ -357,16 +381,18 @@ impl EvaluationEngine {
             return Ok(Some((PolicyType::VpcEndpoint, policy, sid, reasoning)));
         }
 
-        // Check identity policies
-        if let Some((policy, sid, reasoning)) = check_explicit_deny(
-            &policies.identity_policies,
-            context,
-            PolicyType::IdentityBased,
-        )? {
-            return Ok(Some((PolicyType::IdentityBased, policy, sid, reasoning)));
+        // Check identity policies (skip for anonymous - no identity)
+        if !is_anonymous {
+            if let Some((policy, sid, reasoning)) = check_explicit_deny(
+                &policies.identity_policies,
+                context,
+                PolicyType::IdentityBased,
+            )? {
+                return Ok(Some((PolicyType::IdentityBased, policy, sid, reasoning)));
+            }
         }
 
-        // Check resource policies
+        // Check resource policies (applies to anonymous)
         if let Some((policy, sid, reasoning)) = check_explicit_deny(
             &policies.resource_policies,
             context,
@@ -375,27 +401,31 @@ impl EvaluationEngine {
             return Ok(Some((PolicyType::ResourceBased, policy, sid, reasoning)));
         }
 
-        // Check permission boundaries
-        if let Some((policy, sid, reasoning)) = check_explicit_deny(
-            &policies.permission_boundaries,
-            context,
-            PolicyType::PermissionBoundary,
-        )? {
-            return Ok(Some((
+        // Check permission boundaries (skip for anonymous - no principal)
+        if !is_anonymous {
+            if let Some((policy, sid, reasoning)) = check_explicit_deny(
+                &policies.permission_boundaries,
+                context,
                 PolicyType::PermissionBoundary,
-                policy,
-                sid,
-                reasoning,
-            )));
+            )? {
+                return Ok(Some((
+                    PolicyType::PermissionBoundary,
+                    policy,
+                    sid,
+                    reasoning,
+                )));
+            }
         }
 
-        // Check session policies
-        if let Some((policy, sid, reasoning)) = check_explicit_deny(
-            &policies.session_policies,
-            context,
-            PolicyType::SessionPolicy,
-        )? {
-            return Ok(Some((PolicyType::SessionPolicy, policy, sid, reasoning)));
+        // Check session policies (skip for anonymous - no session)
+        if !is_anonymous {
+            if let Some((policy, sid, reasoning)) = check_explicit_deny(
+                &policies.session_policies,
+                context,
+                PolicyType::SessionPolicy,
+            )? {
+                return Ok(Some((PolicyType::SessionPolicy, policy, sid, reasoning)));
+            }
         }
 
         Ok(None)

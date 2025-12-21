@@ -60,11 +60,21 @@ pub struct Args {
     // Required Arguments
     // =========================================================================
     /// The IAM action to evaluate (e.g., s3:GetObject)
-    #[arg(short, long, help_heading = "Request", required_unless_present = "generate_context_template")]
+    #[arg(
+        short,
+        long,
+        help_heading = "Request",
+        required_unless_present = "generate_context_template"
+    )]
     pub action: Option<String>,
 
     /// The resource ARN to evaluate (e.g., arn:aws:s3:::my-bucket/file.txt)
-    #[arg(short, long, help_heading = "Request", required_unless_present = "generate_context_template")]
+    #[arg(
+        short,
+        long,
+        help_heading = "Request",
+        required_unless_present = "generate_context_template"
+    )]
     pub resource: Option<String>,
 
     // =========================================================================
@@ -185,10 +195,7 @@ pub struct Args {
     ///
     /// Outputs template JSON files for principal, resource, and request
     /// context with all available fields documented.
-    #[arg(
-        long = "generate-context-template",
-        help_heading = "Context"
-    )]
+    #[arg(long = "generate-context-template", help_heading = "Context")]
     pub generate_context_template: bool,
 
     // =========================================================================

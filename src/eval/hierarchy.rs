@@ -612,4 +612,291 @@ mod tests {
         let (has_allow, _) = check_allows(&policies, &ctx, PolicyType::Scp).unwrap();
         assert!(!has_allow);
     }
+
+    // ==========================================================================
+    // AWS Behavior Accuracy Tests - SCP Hierarchy Logic
+    // ==========================================================================
+
+    fn deny_s3_scp() -> NamedPolicy {
+        parse_policy(
+            "DenyS3",
+            r#"{
+                "Statement": [{
+                    "Sid": "DenyS3",
+                    "Effect": "Deny",
+                    "Action": "s3:*",
+                    "Resource": "*"
+                }]
+            }"#,
+        )
+    }
+
+    fn allow_s3_only_scp() -> NamedPolicy {
+        parse_policy(
+            "AllowS3Only",
+            r#"{
+                "Statement": [{
+                    "Sid": "AllowS3",
+                    "Effect": "Allow",
+                    "Action": "s3:*",
+                    "Resource": "*"
+                }]
+            }"#,
+        )
+    }
+
+    /// Test OR logic within a level: if multiple policies at the same level,
+    /// ANY policy can provide the Allow (OR logic).
+    /// AWS behavior: Within a level, policies are evaluated together.
+    #[test]
+    fn test_scp_or_logic_within_level_allow_wins() {
+        // Two SCPs at account level: one only allows EC2, one only allows S3
+        // S3 request should be allowed because one of them allows it
+        let ec2_only_scp = parse_policy(
+            "AllowEC2Only",
+            r#"{
+                "Statement": [{
+                    "Sid": "AllowEC2",
+                    "Effect": "Allow",
+                    "Action": "ec2:*",
+                    "Resource": "*"
+                }]
+            }"#,
+        );
+
+        let hierarchy = OrganizationHierarchy {
+            root_scps: vec![full_access_scp()],
+            ou_scps: vec![],
+            account_scps: vec![ec2_only_scp, allow_s3_only_scp()], // Two policies, OR logic
+        };
+
+        let ctx = make_context("s3:GetObject", "arn:aws:s3:::bucket/key");
+        let result = evaluate_scp_hierarchy(&hierarchy, &ctx).unwrap();
+
+        // Should be allowed because at least one policy at account level allows S3
+        assert!(result.allowed);
+        assert!(!result.explicit_deny);
+    }
+
+    /// Test that explicit deny still overrides allows within same level
+    /// AWS behavior: Explicit deny always wins, even with OR logic for allows
+    #[test]
+    fn test_scp_deny_overrides_or_logic() {
+        // Two SCPs: one allows S3, one denies S3 - deny should win
+        let hierarchy = OrganizationHierarchy {
+            root_scps: vec![full_access_scp()],
+            ou_scps: vec![],
+            account_scps: vec![allow_s3_only_scp(), deny_s3_scp()],
+        };
+
+        let ctx = make_context("s3:GetObject", "arn:aws:s3:::bucket/key");
+        let result = evaluate_scp_hierarchy(&hierarchy, &ctx).unwrap();
+
+        assert!(!result.allowed);
+        assert!(result.explicit_deny);
+    }
+
+    /// Test deeply nested OU hierarchy (4+ levels)
+    /// AWS behavior: Each level must allow, AND logic between all levels
+    #[test]
+    fn test_scp_deeply_nested_ous_all_allow() {
+        let hierarchy = OrganizationHierarchy {
+            root_scps: vec![full_access_scp()],
+            ou_scps: vec![
+                OuScpSet {
+                    ou_id: "ou-root".to_string(),
+                    ou_name: Some("Root-OU".to_string()),
+                    policies: vec![full_access_scp()],
+                },
+                OuScpSet {
+                    ou_id: "ou-dept".to_string(),
+                    ou_name: Some("Department".to_string()),
+                    policies: vec![full_access_scp()],
+                },
+                OuScpSet {
+                    ou_id: "ou-team".to_string(),
+                    ou_name: Some("Team".to_string()),
+                    policies: vec![full_access_scp()],
+                },
+                OuScpSet {
+                    ou_id: "ou-project".to_string(),
+                    ou_name: Some("Project".to_string()),
+                    policies: vec![full_access_scp()],
+                },
+            ],
+            account_scps: vec![full_access_scp()],
+        };
+
+        let ctx = make_context("s3:GetObject", "arn:aws:s3:::bucket/key");
+        let result = evaluate_scp_hierarchy(&hierarchy, &ctx).unwrap();
+
+        assert!(result.allowed);
+    }
+
+    /// Test that ANY level blocking in deep hierarchy stops the request
+    /// AWS behavior: AND logic - every single level must allow
+    #[test]
+    fn test_scp_deeply_nested_ous_middle_blocks() {
+        let hierarchy = OrganizationHierarchy {
+            root_scps: vec![full_access_scp()],
+            ou_scps: vec![
+                OuScpSet {
+                    ou_id: "ou-root".to_string(),
+                    ou_name: Some("Root-OU".to_string()),
+                    policies: vec![full_access_scp()],
+                },
+                OuScpSet {
+                    ou_id: "ou-dept".to_string(),
+                    ou_name: Some("Department".to_string()),
+                    policies: vec![allow_s3_ec2_scp()], // Only allows S3/EC2
+                },
+                OuScpSet {
+                    ou_id: "ou-team".to_string(),
+                    ou_name: Some("Team".to_string()),
+                    policies: vec![full_access_scp()],
+                },
+            ],
+            account_scps: vec![full_access_scp()],
+        };
+
+        // DynamoDB should be blocked at Department level
+        let ctx = make_context(
+            "dynamodb:GetItem",
+            "arn:aws:dynamodb:us-east-1:123456789012:table/Users",
+        );
+        let result = evaluate_scp_hierarchy(&hierarchy, &ctx).unwrap();
+
+        assert!(!result.allowed);
+        assert!(!result.explicit_deny);
+        assert!(
+            result
+                .blocking_level
+                .as_ref()
+                .unwrap()
+                .contains("Department")
+        );
+    }
+
+    /// Test OU with empty policies list - should be skipped
+    /// AWS behavior: OUs without SCPs are skipped, not implicit deny
+    #[test]
+    fn test_scp_ou_with_empty_policies_skipped() {
+        let hierarchy = OrganizationHierarchy {
+            root_scps: vec![full_access_scp()],
+            ou_scps: vec![
+                OuScpSet {
+                    ou_id: "ou-parent".to_string(),
+                    ou_name: Some("Parent".to_string()),
+                    policies: vec![full_access_scp()],
+                },
+                OuScpSet {
+                    ou_id: "ou-empty".to_string(),
+                    ou_name: Some("EmptyOU".to_string()),
+                    policies: vec![], // Empty - should be skipped
+                },
+            ],
+            account_scps: vec![full_access_scp()],
+        };
+
+        let ctx = make_context("s3:GetObject", "arn:aws:s3:::bucket/key");
+        let result = evaluate_scp_hierarchy(&hierarchy, &ctx).unwrap();
+
+        // Should succeed because empty OU is skipped
+        assert!(result.allowed);
+    }
+
+    /// Test OU without name uses ID in blocking message
+    #[test]
+    fn test_scp_ou_without_name_uses_id() {
+        let hierarchy = OrganizationHierarchy {
+            root_scps: vec![full_access_scp()],
+            ou_scps: vec![OuScpSet {
+                ou_id: "ou-abc123".to_string(),
+                ou_name: None, // No name
+                policies: vec![allow_s3_only_scp()],
+            }],
+            account_scps: vec![],
+        };
+
+        let ctx = make_context(
+            "ec2:RunInstances",
+            "arn:aws:ec2:us-east-1:123456789012:instance/*",
+        );
+        let result = evaluate_scp_hierarchy(&hierarchy, &ctx).unwrap();
+
+        assert!(!result.allowed);
+        assert!(
+            result
+                .blocking_level
+                .as_ref()
+                .unwrap()
+                .contains("ou-abc123")
+        );
+    }
+
+    // ==========================================================================
+    // RCP Hierarchy Tests
+    // ==========================================================================
+
+    /// Test RCP hierarchy with all levels allowing
+    #[test]
+    fn test_rcp_all_levels_allow() {
+        let hierarchy = OrganizationHierarchy {
+            root_scps: vec![full_access_scp()], // Note: uses root_scps field for RCPs too
+            ou_scps: vec![OuScpSet {
+                ou_id: "ou-1234".to_string(),
+                ou_name: Some("Production".to_string()),
+                policies: vec![full_access_scp()],
+            }],
+            account_scps: vec![full_access_scp()],
+        };
+
+        let ctx = make_context("s3:GetObject", "arn:aws:s3:::bucket/key");
+        let result = evaluate_rcp_hierarchy(&hierarchy, &ctx).unwrap();
+
+        assert!(result.allowed);
+        assert!(!result.explicit_deny);
+    }
+
+    /// Test RCP explicit deny
+    #[test]
+    fn test_rcp_explicit_deny() {
+        let hierarchy = OrganizationHierarchy {
+            root_scps: vec![deny_s3_scp()],
+            ou_scps: vec![],
+            account_scps: vec![],
+        };
+
+        let ctx = make_context("s3:GetObject", "arn:aws:s3:::bucket/key");
+        let result = evaluate_rcp_hierarchy(&hierarchy, &ctx).unwrap();
+
+        assert!(!result.allowed);
+        assert!(result.explicit_deny);
+        assert!(
+            result
+                .blocking_level
+                .as_ref()
+                .unwrap()
+                .contains("Root RCPs")
+        );
+    }
+
+    /// Test RCP implicit deny (no matching allow)
+    #[test]
+    fn test_rcp_implicit_deny_no_allow() {
+        let hierarchy = OrganizationHierarchy {
+            root_scps: vec![allow_s3_only_scp()], // Only allows S3
+            ou_scps: vec![],
+            account_scps: vec![],
+        };
+
+        let ctx = make_context(
+            "ec2:RunInstances",
+            "arn:aws:ec2:us-east-1:123456789012:instance/*",
+        );
+        let result = evaluate_rcp_hierarchy(&hierarchy, &ctx).unwrap();
+
+        assert!(!result.allowed);
+        assert!(!result.explicit_deny);
+    }
 }

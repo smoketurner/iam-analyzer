@@ -997,4 +997,127 @@ mod tests {
             !ConditionEvaluator::evaluate("StringNotEqualsIfExists", Some(&ctx), &policy).unwrap()
         );
     }
+
+    // ===================
+    // AWS Behavior Accuracy Tests
+    // ===================
+
+    /// ForAnyValue with empty context should FAIL (no values to match)
+    /// AWS behavior: ForAnyValue requires at least one context value to match
+    #[test]
+    fn test_for_any_value_empty_context_fails() {
+        let ctx: Vec<String> = vec![];
+        let policy = vec!["a".to_string(), "b".to_string()];
+        // Empty context means no value can match any policy value
+        assert!(
+            !ConditionEvaluator::evaluate("ForAnyValue:StringEquals", Some(&ctx), &policy).unwrap()
+        );
+    }
+
+    /// Null operator with key present but empty string value
+    /// AWS behavior: Key with empty string still EXISTS (Null:true should fail)
+    #[test]
+    fn test_null_true_key_exists_with_empty_string() {
+        let ctx = vec!["".to_string()]; // Empty string, but key exists
+        let policy = vec!["true".to_string()];
+        // Key exists (even if empty), so Null:true should NOT match
+        assert!(!ConditionEvaluator::evaluate("Null", Some(&ctx), &policy).unwrap());
+    }
+
+    /// IfExists modifier with ArnLike operator
+    #[test]
+    fn test_arn_like_if_exists_key_missing() {
+        let policy = vec!["arn:aws:s3:::bucket/*".to_string()];
+        // Missing key with IfExists should return true
+        assert!(ConditionEvaluator::evaluate("ArnLikeIfExists", None, &policy).unwrap());
+    }
+
+    /// IfExists modifier with IpAddress operator
+    #[test]
+    fn test_ip_address_if_exists_key_missing() {
+        let policy = vec!["10.0.0.0/8".to_string()];
+        // Missing key with IfExists should return true
+        assert!(ConditionEvaluator::evaluate("IpAddressIfExists", None, &policy).unwrap());
+    }
+
+    /// IfExists with key present should evaluate normally
+    #[test]
+    fn test_string_equals_if_exists_key_present_match() {
+        let ctx = vec!["us-east-1".to_string()];
+        let policy = vec!["us-east-1".to_string()];
+        assert!(ConditionEvaluator::evaluate("StringEqualsIfExists", Some(&ctx), &policy).unwrap());
+    }
+
+    /// IfExists with key present but non-matching value
+    #[test]
+    fn test_string_equals_if_exists_key_present_no_match() {
+        let ctx = vec!["eu-west-1".to_string()];
+        let policy = vec!["us-east-1".to_string()];
+        // Key present, but value doesn't match - should fail
+        assert!(
+            !ConditionEvaluator::evaluate("StringEqualsIfExists", Some(&ctx), &policy).unwrap()
+        );
+    }
+
+    /// NumericEquals with IfExists modifier
+    #[test]
+    fn test_numeric_equals_if_exists_key_missing() {
+        let policy = vec!["100".to_string()];
+        assert!(ConditionEvaluator::evaluate("NumericEqualsIfExists", None, &policy).unwrap());
+    }
+
+    /// DateEquals with IfExists modifier
+    #[test]
+    fn test_date_equals_if_exists_key_missing() {
+        let policy = vec!["2024-01-01T00:00:00Z".to_string()];
+        assert!(ConditionEvaluator::evaluate("DateEqualsIfExists", None, &policy).unwrap());
+    }
+
+    /// Bool operator with IfExists modifier
+    #[test]
+    fn test_bool_if_exists_key_missing() {
+        let policy = vec!["true".to_string()];
+        assert!(ConditionEvaluator::evaluate("BoolIfExists", None, &policy).unwrap());
+    }
+
+    /// Combined modifiers: ForAllValues with IfExists
+    #[test]
+    fn test_for_all_values_if_exists_key_missing() {
+        let policy = vec!["a".to_string()];
+        // Missing key with IfExists should return true
+        assert!(
+            ConditionEvaluator::evaluate("ForAllValues:StringEqualsIfExists", None, &policy)
+                .unwrap()
+        );
+    }
+
+    /// Multiple conditions on same operator should use AND logic
+    /// This is handled at the statement level, but testing the operator behavior
+    #[test]
+    fn test_ip_address_multiple_context_values() {
+        // Context has multiple IPs, policy has one CIDR
+        // Should match if ANY context IP is in the CIDR
+        let ctx = vec!["192.168.1.1".to_string(), "10.0.0.1".to_string()];
+        let policy = vec!["192.168.1.0/24".to_string()];
+        assert!(ConditionEvaluator::evaluate("IpAddress", Some(&ctx), &policy).unwrap());
+    }
+
+    /// NotIpAddress with multiple context values - all must be outside all CIDRs
+    #[test]
+    fn test_not_ip_address_multiple_context_values_all_outside() {
+        let ctx = vec!["172.16.0.1".to_string(), "172.17.0.1".to_string()];
+        let policy = vec!["192.168.1.0/24".to_string(), "10.0.0.0/8".to_string()];
+        // All context IPs are outside all CIDRs - any matching context value passes
+        assert!(ConditionEvaluator::evaluate("NotIpAddress", Some(&ctx), &policy).unwrap());
+    }
+
+    /// NotIpAddress with one context value inside - should pass for the other
+    #[test]
+    fn test_not_ip_address_multiple_context_one_inside() {
+        let ctx = vec!["172.16.0.1".to_string(), "192.168.1.100".to_string()];
+        let policy = vec!["192.168.1.0/24".to_string()];
+        // First IP is outside CIDR, so it passes the NotIpAddress check
+        // For negated operators: any context value passing means condition matches
+        assert!(ConditionEvaluator::evaluate("NotIpAddress", Some(&ctx), &policy).unwrap());
+    }
 }

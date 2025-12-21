@@ -911,3 +911,430 @@ fn test_condition_arn_not_like_principal_not_in_list() {
     let result = engine.evaluate(&ctx, &policies);
     assert_eq!(result.decision, Decision::ExplicitDeny);
 }
+
+// =============================================================================
+// AWS Behavior Accuracy Tests - Cross-Account AssumeRole Variants
+// =============================================================================
+
+#[test]
+fn test_cross_account_assume_role_with_saml() {
+    // sts:AssumeRoleWithSAML should succeed with only trust policy
+    // AWS behavior: All sts:AssumeRole* actions can work with trust policy alone
+    let engine = EvaluationEngine::new();
+    let ctx = RequestContext::builder()
+        .action("sts:AssumeRoleWithSAML")
+        .resource("arn:aws:iam::222222222222:role/SAMLRole")
+        .principal_account("111111111111")
+        .resource_account("222222222222")
+        .cross_account(true)
+        .build()
+        .unwrap();
+
+    let trust_policy = serde_json::from_str::<Policy>(
+        r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": "*",
+                "Action": "sts:AssumeRoleWithSAML",
+                "Resource": "*"
+            }]
+        }"#,
+    )
+    .unwrap();
+
+    let policies = PolicySet {
+        resource_policies: vec![NamedPolicy::new("TrustPolicy", trust_policy)],
+        ..Default::default()
+    };
+
+    let result = engine.evaluate(&ctx, &policies);
+    assert_eq!(result.decision, Decision::Allow);
+}
+
+#[test]
+fn test_cross_account_assume_role_case_insensitive() {
+    // Action names are case-insensitive in AWS
+    // STS:ASSUMEROLE should work the same as sts:AssumeRole
+    let engine = EvaluationEngine::new();
+    let ctx = RequestContext::builder()
+        .action("STS:ASSUMEROLE") // Uppercase
+        .resource("arn:aws:iam::222222222222:role/TestRole")
+        .principal_arn("arn:aws:iam::111111111111:user/alice")
+        .principal_account("111111111111")
+        .resource_account("222222222222")
+        .cross_account(true)
+        .build()
+        .unwrap();
+
+    let trust_policy = serde_json::from_str::<Policy>(
+        r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": {
+                    "AWS": "arn:aws:iam::111111111111:root"
+                },
+                "Action": "sts:AssumeRole",
+                "Resource": "*"
+            }]
+        }"#,
+    )
+    .unwrap();
+
+    let policies = PolicySet {
+        resource_policies: vec![NamedPolicy::new("TrustPolicy", trust_policy)],
+        ..Default::default()
+    };
+
+    let result = engine.evaluate(&ctx, &policies);
+    // Should allow because action matching is case-insensitive
+    assert_eq!(result.decision, Decision::Allow);
+}
+
+#[test]
+fn test_cross_account_assume_role_explicit_deny_in_identity() {
+    // Even though trust policy alone can grant AssumeRole access,
+    // an explicit deny in any policy still blocks
+    let engine = EvaluationEngine::new();
+    let ctx = RequestContext::builder()
+        .action("sts:AssumeRole")
+        .resource("arn:aws:iam::222222222222:role/TestRole")
+        .principal_arn("arn:aws:iam::111111111111:user/alice")
+        .principal_account("111111111111")
+        .resource_account("222222222222")
+        .cross_account(true)
+        .build()
+        .unwrap();
+
+    let trust_policy = serde_json::from_str::<Policy>(
+        r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": "*",
+                "Action": "sts:AssumeRole",
+                "Resource": "*"
+            }]
+        }"#,
+    )
+    .unwrap();
+
+    let deny_assume_role = serde_json::from_str::<Policy>(
+        r#"{
+            "Statement": [{
+                "Sid": "DenyAssumeRole",
+                "Effect": "Deny",
+                "Action": "sts:AssumeRole",
+                "Resource": "*"
+            }]
+        }"#,
+    )
+    .unwrap();
+
+    let policies = PolicySet {
+        identity_policies: vec![NamedPolicy::new("DenyPolicy", deny_assume_role)],
+        resource_policies: vec![NamedPolicy::new("TrustPolicy", trust_policy)],
+        ..Default::default()
+    };
+
+    let result = engine.evaluate(&ctx, &policies);
+    // Explicit deny should still block
+    assert_eq!(result.decision, Decision::ExplicitDeny);
+}
+
+// =============================================================================
+// AWS Behavior Accuracy Tests - Service-Linked Role SCP Bypass
+// =============================================================================
+
+#[test]
+fn test_service_linked_role_bypasses_scp() {
+    // Service-linked roles bypass SCPs
+    // AWS behavior: SLRs are not affected by SCPs
+    let engine = EvaluationEngine::new();
+    let ctx = RequestContext::builder()
+        .action("dynamodb:GetItem")
+        .resource("arn:aws:dynamodb:us-east-1:123456789012:table/Users")
+        .principal_arn("arn:aws:iam::123456789012:role/aws-service-role/elasticloadbalancing.amazonaws.com/AWSServiceRoleForElasticLoadBalancing")
+        .principal_account("123456789012")
+        .service_linked_role(true) // This marks it as a service-linked role
+        .build()
+        .unwrap();
+
+    // SCP only allows S3, should block DynamoDB for normal roles
+    let restrictive_scp = serde_json::from_str::<Policy>(
+        r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Action": "s3:*",
+                "Resource": "*"
+            }]
+        }"#,
+    )
+    .unwrap();
+
+    let full_access_identity = serde_json::from_str::<Policy>(
+        r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Action": "*",
+                "Resource": "*"
+            }]
+        }"#,
+    )
+    .unwrap();
+
+    let policies = PolicySet {
+        scp_hierarchy: Some(OrganizationHierarchy {
+            root_scps: vec![NamedPolicy::new("RestrictiveSCP", restrictive_scp)],
+            ou_scps: vec![],
+            account_scps: vec![],
+        }),
+        identity_policies: vec![NamedPolicy::new("FullAccess", full_access_identity)],
+        ..Default::default()
+    };
+
+    let result = engine.evaluate(&ctx, &policies);
+    // Service-linked role bypasses SCPs, so this should be allowed
+    assert_eq!(result.decision, Decision::Allow);
+}
+
+#[test]
+fn test_regular_role_blocked_by_scp() {
+    // Regular roles ARE affected by SCPs (control case for above test)
+    let engine = EvaluationEngine::new();
+    let ctx = RequestContext::builder()
+        .action("dynamodb:GetItem")
+        .resource("arn:aws:dynamodb:us-east-1:123456789012:table/Users")
+        .principal_arn("arn:aws:iam::123456789012:role/RegularRole")
+        .principal_account("123456789012")
+        .service_linked_role(false) // Not a service-linked role
+        .build()
+        .unwrap();
+
+    let restrictive_scp = serde_json::from_str::<Policy>(
+        r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Action": "s3:*",
+                "Resource": "*"
+            }]
+        }"#,
+    )
+    .unwrap();
+
+    let full_access_identity = serde_json::from_str::<Policy>(
+        r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Action": "*",
+                "Resource": "*"
+            }]
+        }"#,
+    )
+    .unwrap();
+
+    let policies = PolicySet {
+        scp_hierarchy: Some(OrganizationHierarchy {
+            root_scps: vec![NamedPolicy::new("RestrictiveSCP", restrictive_scp)],
+            ou_scps: vec![],
+            account_scps: vec![],
+        }),
+        identity_policies: vec![NamedPolicy::new("FullAccess", full_access_identity)],
+        ..Default::default()
+    };
+
+    let result = engine.evaluate(&ctx, &policies);
+    // Regular role should be blocked by SCP
+    assert_eq!(result.decision, Decision::ImplicitDeny);
+}
+
+// =============================================================================
+// AWS Behavior Accuracy Tests - Anonymous Access Edge Cases
+// =============================================================================
+
+#[test]
+fn test_anonymous_request_bypasses_scp() {
+    // Anonymous requests should not be evaluated against SCPs
+    // (SCPs only apply to principals in the organization)
+    let engine = EvaluationEngine::new();
+    let ctx = RequestContext::builder()
+        .action("s3:GetObject")
+        .resource("arn:aws:s3:::public-bucket/file.txt")
+        // No principal - anonymous request
+        .build()
+        .unwrap();
+
+    // SCP that would deny if it applied
+    let deny_all_scp = serde_json::from_str::<Policy>(
+        r#"{
+            "Statement": [{
+                "Effect": "Deny",
+                "Action": "*",
+                "Resource": "*"
+            }]
+        }"#,
+    )
+    .unwrap();
+
+    let public_bucket_policy = serde_json::from_str::<Policy>(
+        r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": "*",
+                "Action": "s3:GetObject",
+                "Resource": "arn:aws:s3:::public-bucket/*"
+            }]
+        }"#,
+    )
+    .unwrap();
+
+    let policies = PolicySet {
+        scp_hierarchy: Some(OrganizationHierarchy {
+            root_scps: vec![NamedPolicy::new("DenyAllSCP", deny_all_scp)],
+            ou_scps: vec![],
+            account_scps: vec![],
+        }),
+        resource_policies: vec![NamedPolicy::new("PublicBucket", public_bucket_policy)],
+        ..Default::default()
+    };
+
+    let result = engine.evaluate(&ctx, &policies);
+    // Anonymous request should be allowed because SCPs don't apply to anonymous
+    // and the resource policy allows it
+    assert_eq!(result.decision, Decision::Allow);
+}
+
+#[test]
+fn test_anonymous_request_bypasses_permission_boundary() {
+    // Anonymous requests should not be evaluated against permission boundaries
+    let engine = EvaluationEngine::new();
+    let ctx = RequestContext::builder()
+        .action("s3:GetObject")
+        .resource("arn:aws:s3:::public-bucket/file.txt")
+        // No principal - anonymous request
+        .build()
+        .unwrap();
+
+    // Permission boundary that would block if it applied
+    let restrictive_boundary = serde_json::from_str::<Policy>(
+        r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Action": "ec2:*",
+                "Resource": "*"
+            }]
+        }"#,
+    )
+    .unwrap();
+
+    let public_bucket_policy = serde_json::from_str::<Policy>(
+        r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": "*",
+                "Action": "s3:GetObject",
+                "Resource": "arn:aws:s3:::public-bucket/*"
+            }]
+        }"#,
+    )
+    .unwrap();
+
+    let policies = PolicySet {
+        permission_boundaries: vec![NamedPolicy::new(
+            "RestrictiveBoundary",
+            restrictive_boundary,
+        )],
+        resource_policies: vec![NamedPolicy::new("PublicBucket", public_bucket_policy)],
+        ..Default::default()
+    };
+
+    let result = engine.evaluate(&ctx, &policies);
+    // Anonymous request should be allowed because permission boundaries don't apply
+    assert_eq!(result.decision, Decision::Allow);
+}
+
+#[test]
+fn test_anonymous_explicit_deny_in_resource_policy() {
+    // Anonymous requests CAN be explicitly denied by resource policies
+    let engine = EvaluationEngine::new();
+    let ctx = RequestContext::builder()
+        .action("s3:GetObject")
+        .resource("arn:aws:s3:::protected-bucket/file.txt")
+        // No principal - anonymous request
+        .build()
+        .unwrap();
+
+    let deny_anonymous_policy = serde_json::from_str::<Policy>(
+        r#"{
+            "Statement": [{
+                "Sid": "DenyAnonymous",
+                "Effect": "Deny",
+                "Principal": "*",
+                "Action": "s3:GetObject",
+                "Resource": "arn:aws:s3:::protected-bucket/*"
+            }]
+        }"#,
+    )
+    .unwrap();
+
+    let policies = PolicySet {
+        resource_policies: vec![NamedPolicy::new("DenyAnonymous", deny_anonymous_policy)],
+        ..Default::default()
+    };
+
+    let result = engine.evaluate(&ctx, &policies);
+    assert_eq!(result.decision, Decision::ExplicitDeny);
+}
+
+// =============================================================================
+// AWS Behavior Accuracy Tests - Evaluation Order
+// =============================================================================
+
+#[test]
+fn test_explicit_deny_short_circuits_before_scp() {
+    // Explicit deny in identity policy should stop evaluation before SCP check
+    // This validates the evaluation order
+    let engine = EvaluationEngine::new();
+    let ctx = RequestContext::builder()
+        .action("s3:GetObject")
+        .resource("arn:aws:s3:::bucket/key")
+        .principal_arn("arn:aws:iam::123456789012:user/alice")
+        .principal_account("123456789012")
+        .build()
+        .unwrap();
+
+    let deny_policy = serde_json::from_str::<Policy>(
+        r#"{
+            "Statement": [{
+                "Sid": "DenyAll",
+                "Effect": "Deny",
+                "Action": "*",
+                "Resource": "*"
+            }]
+        }"#,
+    )
+    .unwrap();
+
+    let full_access_scp = serde_json::from_str::<Policy>(
+        r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Action": "*",
+                "Resource": "*"
+            }]
+        }"#,
+    )
+    .unwrap();
+
+    let policies = PolicySet {
+        scp_hierarchy: Some(OrganizationHierarchy {
+            root_scps: vec![NamedPolicy::new("FullAccess", full_access_scp)],
+            ou_scps: vec![],
+            account_scps: vec![],
+        }),
+        identity_policies: vec![NamedPolicy::new("DenyPolicy", deny_policy)],
+        ..Default::default()
+    };
+
+    let result = engine.evaluate(&ctx, &policies);
+    // Should be ExplicitDeny from identity policy, not Allow from SCP
+    assert_eq!(result.decision, Decision::ExplicitDeny);
+}

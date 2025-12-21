@@ -339,12 +339,8 @@ fn load_request_context_file(path: &str) -> Result<RequestContextFile> {
         source: e,
     })?;
 
-    serde_json::from_str(&content).map_err(|e| {
-        Error::Other(format!(
-            "Failed to parse request context '{}': {}",
-            path, e
-        ))
-    })
+    serde_json::from_str(&content)
+        .map_err(|e| Error::Other(format!("Failed to parse request context '{}': {}", path, e)))
 }
 
 /// Build the request context from CLI arguments.

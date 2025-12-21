@@ -968,4 +968,257 @@ mod tests {
         let result = statement_matches(&policy.statement[0], &ctx).unwrap();
         assert!(!result.matches);
     }
+
+    // ===================
+    // AWS Behavior Accuracy Tests - Root ARN Principal Matching
+    // ===================
+
+    /// Root ARN matches any user from the same account
+    /// AWS behavior: arn:aws:iam::ACCOUNT:root matches ANY principal from that account
+    #[test]
+    fn test_root_arn_matches_user_from_same_account() {
+        let policy = parse_policy(
+            r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": {
+                    "AWS": "arn:aws:iam::123456789012:root"
+                },
+                "Action": "s3:GetObject",
+                "Resource": "*"
+            }]
+        }"#,
+        );
+
+        // User from the same account should match
+        let ctx = RequestContext::builder()
+            .action("s3:GetObject")
+            .resource("arn:aws:s3:::bucket/key")
+            .principal_arn("arn:aws:iam::123456789012:user/alice")
+            .principal_account("123456789012")
+            .build()
+            .unwrap();
+        let result = statement_matches(&policy.statement[0], &ctx).unwrap();
+        assert!(result.matches);
+    }
+
+    /// Root ARN matches any role from the same account
+    #[test]
+    fn test_root_arn_matches_role_from_same_account() {
+        let policy = parse_policy(
+            r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": {
+                    "AWS": "arn:aws:iam::123456789012:root"
+                },
+                "Action": "sts:AssumeRole",
+                "Resource": "*"
+            }]
+        }"#,
+        );
+
+        // Role from the same account should match
+        let ctx = RequestContext::builder()
+            .action("sts:AssumeRole")
+            .resource("arn:aws:iam::123456789012:role/MyRole")
+            .principal_arn("arn:aws:iam::123456789012:role/AdminRole")
+            .principal_account("123456789012")
+            .build()
+            .unwrap();
+        let result = statement_matches(&policy.statement[0], &ctx).unwrap();
+        assert!(result.matches);
+    }
+
+    /// Root ARN does NOT match principals from different account
+    #[test]
+    fn test_root_arn_no_match_different_account() {
+        let policy = parse_policy(
+            r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": {
+                    "AWS": "arn:aws:iam::123456789012:root"
+                },
+                "Action": "s3:GetObject",
+                "Resource": "*"
+            }]
+        }"#,
+        );
+
+        // User from a DIFFERENT account should NOT match
+        let ctx = RequestContext::builder()
+            .action("s3:GetObject")
+            .resource("arn:aws:s3:::bucket/key")
+            .principal_arn("arn:aws:iam::999999999999:user/alice")
+            .principal_account("999999999999")
+            .build()
+            .unwrap();
+        let result = statement_matches(&policy.statement[0], &ctx).unwrap();
+        assert!(!result.matches);
+    }
+
+    /// Root ARN in GovCloud partition
+    #[test]
+    fn test_root_arn_govcloud_partition() {
+        let policy = parse_policy(
+            r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": {
+                    "AWS": "arn:aws-us-gov:iam::123456789012:root"
+                },
+                "Action": "s3:GetObject",
+                "Resource": "*"
+            }]
+        }"#,
+        );
+
+        // GovCloud principal should match GovCloud root ARN
+        let ctx = RequestContext::builder()
+            .action("s3:GetObject")
+            .resource("arn:aws-us-gov:s3:::bucket/key")
+            .principal_arn("arn:aws-us-gov:iam::123456789012:user/alice")
+            .principal_account("123456789012")
+            .build()
+            .unwrap();
+        let result = statement_matches(&policy.statement[0], &ctx).unwrap();
+        assert!(result.matches);
+    }
+
+    /// Root ARN in China partition
+    #[test]
+    fn test_root_arn_china_partition() {
+        let policy = parse_policy(
+            r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": {
+                    "AWS": "arn:aws-cn:iam::123456789012:root"
+                },
+                "Action": "s3:GetObject",
+                "Resource": "*"
+            }]
+        }"#,
+        );
+
+        // China principal should match China root ARN
+        let ctx = RequestContext::builder()
+            .action("s3:GetObject")
+            .resource("arn:aws-cn:s3:::bucket/key")
+            .principal_arn("arn:aws-cn:iam::123456789012:user/alice")
+            .principal_account("123456789012")
+            .build()
+            .unwrap();
+        let result = statement_matches(&policy.statement[0], &ctx).unwrap();
+        assert!(result.matches);
+    }
+
+    /// Service principal exact match
+    /// Note: Uses context_key to set the service name where get_context_key looks it up
+    #[test]
+    fn test_service_principal_exact_match() {
+        let policy = parse_policy(
+            r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": {
+                    "Service": "lambda.amazonaws.com"
+                },
+                "Action": "sts:AssumeRole",
+                "Resource": "*"
+            }]
+        }"#,
+        );
+
+        // Lambda service should match
+        let ctx = RequestContext::builder()
+            .action("sts:AssumeRole")
+            .resource("arn:aws:iam::123456789012:role/LambdaRole")
+            .context_key("aws:principalservicename", "lambda.amazonaws.com")
+            .build()
+            .unwrap();
+        let result = statement_matches(&policy.statement[0], &ctx).unwrap();
+        assert!(result.matches);
+    }
+
+    /// Service principal array - match any
+    #[test]
+    fn test_service_principal_array() {
+        let policy = parse_policy(
+            r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": {
+                    "Service": ["lambda.amazonaws.com", "ec2.amazonaws.com"]
+                },
+                "Action": "sts:AssumeRole",
+                "Resource": "*"
+            }]
+        }"#,
+        );
+
+        // EC2 service should match (second in list)
+        let ctx = RequestContext::builder()
+            .action("sts:AssumeRole")
+            .resource("arn:aws:iam::123456789012:role/EC2Role")
+            .context_key("aws:principalservicename", "ec2.amazonaws.com")
+            .build()
+            .unwrap();
+        let result = statement_matches(&policy.statement[0], &ctx).unwrap();
+        assert!(result.matches);
+    }
+
+    /// Multiple AWS principals in array
+    #[test]
+    fn test_multiple_aws_principals() {
+        let policy = parse_policy(
+            r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": {
+                    "AWS": [
+                        "arn:aws:iam::111111111111:root",
+                        "arn:aws:iam::222222222222:root"
+                    ]
+                },
+                "Action": "sts:AssumeRole",
+                "Resource": "*"
+            }]
+        }"#,
+        );
+
+        // User from first account should match
+        let ctx = RequestContext::builder()
+            .action("sts:AssumeRole")
+            .resource("arn:aws:iam::333333333333:role/CrossAccountRole")
+            .principal_arn("arn:aws:iam::111111111111:user/alice")
+            .principal_account("111111111111")
+            .build()
+            .unwrap();
+        let result = statement_matches(&policy.statement[0], &ctx).unwrap();
+        assert!(result.matches);
+
+        // User from second account should match
+        let ctx = RequestContext::builder()
+            .action("sts:AssumeRole")
+            .resource("arn:aws:iam::333333333333:role/CrossAccountRole")
+            .principal_arn("arn:aws:iam::222222222222:user/bob")
+            .principal_account("222222222222")
+            .build()
+            .unwrap();
+        let result = statement_matches(&policy.statement[0], &ctx).unwrap();
+        assert!(result.matches);
+
+        // User from third account should NOT match
+        let ctx = RequestContext::builder()
+            .action("sts:AssumeRole")
+            .resource("arn:aws:iam::333333333333:role/CrossAccountRole")
+            .principal_arn("arn:aws:iam::333333333333:user/charlie")
+            .principal_account("333333333333")
+            .build()
+            .unwrap();
+        let result = statement_matches(&policy.statement[0], &ctx).unwrap();
+        assert!(!result.matches);
+    }
 }

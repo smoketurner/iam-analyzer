@@ -411,11 +411,17 @@ impl RequestContextBuilder {
     }
 
     /// Set the AWS service principal name (aws:PrincipalServiceName).
+    ///
+    /// This also automatically sets `aws:PrincipalIsAWSService` to `true`.
     pub fn principal_service_name(mut self, name: impl Into<String>) -> Self {
         let n = name.into();
         self.principal_service_name = Some(n.clone());
         self.principal_ctx
             .set("aws:principalservicename", ConditionValue::String(n));
+        // Auto-set PrincipalIsAWSService when a service name is provided
+        self.principal_is_aws_service = Some(true);
+        self.principal_ctx
+            .set("aws:principalisawsservice", ConditionValue::Bool(true));
         self
     }
 
@@ -525,8 +531,16 @@ impl RequestContextBuilder {
 
     /// Set the list of AWS service principal names (aws:PrincipalServiceNamesList).
     /// Multi-valued version of PrincipalServiceName.
+    ///
+    /// This also automatically sets `aws:PrincipalIsAWSService` to `true` if the list is non-empty.
     pub fn principal_service_names_list(mut self, names: Vec<impl Into<String>>) -> Self {
         let n: Vec<String> = names.into_iter().map(|s| s.into()).collect();
+        // Auto-set PrincipalIsAWSService when service names are provided
+        if !n.is_empty() {
+            self.principal_is_aws_service = Some(true);
+            self.principal_ctx
+                .set("aws:principalisawsservice", ConditionValue::Bool(true));
+        }
         self.principal_ctx.set(
             "aws:principalservicenameslist",
             ConditionValue::StringList(n),

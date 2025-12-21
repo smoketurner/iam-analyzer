@@ -1,6 +1,6 @@
 # IAM Analyzer
 
-[![CI](https://github.com/jplock/iam-analyzer/actions/workflows/ci.yml/badge.svg)](https://github.com/jplock/iam-analyzer/actions/workflows/ci.yml)
+[![CI](https://github.com/smoketurner/iam-analyzer/actions/workflows/ci.yml/badge.svg)](https://github.com/smoketurner/iam-analyzer/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Crates.io](https://img.shields.io/crates/v/iam-analyzer.svg)](https://crates.io/crates/iam-analyzer)
 
@@ -26,6 +26,7 @@ IAM Analyzer implements the exact AWS IAM policy evaluation logic, allowing you 
 - **Organization Hierarchy** - Evaluates SCP/RCP hierarchies (root -> OUs -> account)
 - **Multiple Output Formats** - Text, summary, JSON, and quiet modes
 - **Detailed Reasoning** - Shows step-by-step evaluation decisions
+- **Auto-Detection** - Automatically extracts account, region, and cross-account status from ARNs
 
 ## Installation
 
@@ -48,41 +49,55 @@ cargo install iam-analyzer
 
 ### Basic Identity Policy Evaluation
 
+Test if an identity policy allows S3 access (principal account auto-detected from ARN):
+
 ```bash
 iam-analyzer -a s3:GetObject -r arn:aws:s3:::my-bucket/file.txt \
     -i policy.json \
-    -p arn:aws:iam::123456789012:user/alice \
-    -A 123456789012
+    -p arn:aws:iam::123456789012:user/alice
 ```
 
-### Cross-Account S3 Access
+### With SCP/RCP Organization Hierarchy
+
+Use an organization config file to define SCP/RCP hierarchies:
 
 ```bash
-iam-analyzer -a s3:GetObject -r arn:aws:s3:::their-bucket/file.txt \
-    -i identity.json -R bucket-policy.json \
-    -p arn:aws:iam::111111111111:user/alice \
-    -A 111111111111 --resource-account 222222222222 \
-    --cross-account
-```
-
-### With SCP Region Restrictions
-
-```bash
-iam-analyzer -a ec2:RunInstances -r "arn:aws:ec2:eu-west-1:123456789012:instance/*" \
-    -i policy.json --scp-root scp.json \
-    -p arn:aws:iam::123456789012:user/dev \
-    -A 123456789012 \
-    --requested-region eu-west-1
+iam-analyzer -a ec2:RunInstances -r "arn:aws:ec2:us-east-1:123456789012:instance/*" \
+    -i policy.json \
+    --organization-config org-policies.yaml \
+    -p arn:aws:iam::123456789012:user/dev
 ```
 
 ### With MFA Requirement
+
+Create a request context file with MFA settings:
+
+```bash
+# request-context.json
+{
+  "session": {
+    "mfa_present": true
+  }
+}
+```
 
 ```bash
 iam-analyzer -a ec2:TerminateInstances -r "arn:aws:ec2:*:*:instance/*" \
     -i policy.json \
     -p arn:aws:iam::123456789012:user/admin \
-    -A 123456789012 \
-    --mfa-present
+    --request-context request-context.json
+```
+
+### Cross-Account S3 Access
+
+Cross-account access is auto-detected when principal and resource accounts differ:
+
+```bash
+iam-analyzer -a s3:GetObject -r arn:aws:s3:::their-bucket/file.txt \
+    -i identity.json \
+    -R bucket-policy.json \
+    -p arn:aws:iam::111111111111:user/alice \
+    --resource-context resource.json
 ```
 
 ### Script-Friendly Output
@@ -91,9 +106,16 @@ iam-analyzer -a ec2:TerminateInstances -r "arn:aws:ec2:*:*:instance/*" \
 iam-analyzer -a s3:GetObject -r arn:aws:s3:::bucket/key \
     -i policy.json \
     -p arn:aws:iam::123456789012:user/alice \
-    -A 123456789012 \
     -o quiet
 # Outputs: ALLOW, EXPLICIT_DENY, or IMPLICIT_DENY
+```
+
+### Generate Context Templates
+
+Generate template context files showing all available fields:
+
+```bash
+iam-analyzer --generate-context-template
 ```
 
 ## CLI Reference
@@ -119,24 +141,24 @@ iam-analyzer -a s3:GetObject -r arn:aws:s3:::bucket/key \
 
 | Flag | Description |
 |------|-------------|
-| `--scp-root` | SCP at organization root level |
-| `--scp-ou` | SCP at OU level (ordered from root to account) |
-| `--scp-account` | SCP at account level |
-| `--rcp-root` | RCP at organization root level |
-| `--rcp-ou` | RCP at OU level |
-| `--rcp-account` | RCP at account level |
+| `--organization-config` | Organization policies configuration file (YAML format) |
 
-### Context
+### Context Options
 
 | Flag | Description |
 |------|-------------|
-| `-p, --principal-arn` | Principal ARN making the request |
-| `-A, --principal-account` | Account ID of the principal |
-| `--resource-account` | Account ID that owns the resource |
-| `--cross-account` | Treat as cross-account request |
-| `--mfa-present` | MFA was used for authentication |
-| `--requested-region` | The AWS region being requested |
-| `-C, --context` | Context key-value pairs (KEY=VALUE format) |
+| `-p, --principal-arn` | Principal ARN making the request (convenience shorthand) |
+| `--principal-context` | Principal context file (JSON format) |
+| `--resource-context` | Resource context file (JSON format) |
+| `--request-context` | Request context file (JSON format) |
+| `--generate-context-template` | Generate template context files |
+
+### Service Definitions
+
+| Flag | Description |
+|------|-------------|
+| `--update-definitions` | Force refresh of AWS service definitions |
+| `--offline` | Disable network requests (use cached definitions) |
 
 ### Output Formats
 
@@ -146,6 +168,114 @@ iam-analyzer -a s3:GetObject -r arn:aws:s3:::bucket/key \
 | `-o summary` | Concise decision, policy type, and reason |
 | `-o json` | Structured JSON for programmatic use |
 | `-o quiet` | Just the decision word |
+
+## Context Files
+
+Context files allow you to specify detailed evaluation context in JSON format.
+
+### Principal Context
+
+```json
+{
+  "arn": "arn:aws:iam::123456789012:user/alice",
+  "account": "123456789012",
+  "org_id": "o-abc123def4",
+  "org_paths": ["o-abc123def4/r-ab12/ou-ab12-11111111/"],
+  "userid": "AIDAEXAMPLEUSERID",
+  "username": "alice",
+  "principal_type": "User",
+  "is_aws_service": false,
+  "is_management_account": false,
+  "tags": {
+    "Department": "Engineering",
+    "Team": "Platform"
+  }
+}
+```
+
+### Resource Context
+
+```json
+{
+  "account": "123456789012",
+  "org_id": "o-abc123def4",
+  "org_paths": ["o-abc123def4/r-ab12/ou-ab12-11111111/"],
+  "tags": {
+    "Environment": "Production",
+    "Classification": "Confidential"
+  }
+}
+```
+
+### Request Context
+
+```json
+{
+  "network": {
+    "source_ip": "192.168.1.100",
+    "source_vpc": "vpc-12345678",
+    "source_vpce": "vpce-1a2b3c4d"
+  },
+  "session": {
+    "mfa_present": true,
+    "mfa_auth_age": 300,
+    "source_identity": "alice@example.com"
+  },
+  "request": {
+    "region": "us-east-1",
+    "secure_transport": true,
+    "via_aws_service": false,
+    "called_via": ["athena.amazonaws.com"],
+    "tags": {
+      "CostCenter": "12345"
+    }
+  },
+  "custom": {
+    "iam:PassedToService": "lambda.amazonaws.com"
+  }
+}
+```
+
+All fields in context files are optional. Use `--generate-context-template` to see all available fields.
+
+## Organization Config Format
+
+SCP and RCP hierarchies can be loaded from a single YAML file:
+
+```yaml
+# Organization policies configuration
+# Represents the path from org root to the principal's account
+
+scp_hierarchy:
+  root:                          # Policies at org root (list of paths)
+    - path/to/root-scp.json
+  ous:                           # OU-level policies (ordered root to account)
+    - id: ou-engineering         # Required: OU identifier
+      name: Engineering          # Optional: Human-readable name
+      policies:                  # Required: List of policy file paths
+        - path/to/ou-scp.json
+  account:                       # Policies attached to the principal's account
+    - path/to/account-scp.json
+
+rcp_hierarchy:                   # Same structure for RCPs
+  root: []
+  ous: []
+  account: []
+```
+
+Paths are relative to the config file location. AWS SCPs use AND logic between levels (every level must allow) but OR logic within a level (any policy at a level can provide the allow).
+
+## Auto-Detection Features
+
+The CLI automatically detects several values from ARNs to reduce required flags:
+
+- **Principal account** - Extracted from principal ARN (e.g., `arn:aws:iam::123456789012:user/alice`)
+- **Resource account** - Parsed from resource ARN when in standard format
+- **Requested region** - Extracted from resource ARN (e.g., `us-west-2` from EC2 ARN)
+- **Cross-account** - Detected when principal and resource accounts differ
+- **Service-linked role** - Detected from principal ARN pattern
+
+Explicit values in context files always override auto-detected ones.
 
 ## Supported Condition Keys
 
@@ -182,7 +312,7 @@ IAM Analyzer supports 49 AWS global condition keys:
 
 </details>
 
-Service-specific condition keys can be set via `-C KEY=VALUE` or `--context KEY=VALUE`.
+Service-specific condition keys can be set via the `custom` section in request context files.
 
 ## Library Usage
 
@@ -233,6 +363,19 @@ Run the demo script to see various evaluation scenarios:
 cargo build --release
 ./examples/demo.sh
 ```
+
+The demo covers 14 scenarios including:
+- Basic identity policy evaluation
+- Explicit deny overriding allow
+- Permission boundary restrictions
+- SCP region restrictions
+- Cross-account access
+- Anonymous/public bucket access
+- MFA requirements
+- Session policy restrictions
+- VPC endpoint policies
+- HTTPS-only bucket policies
+- RCP organization restrictions
 
 ## License
 
