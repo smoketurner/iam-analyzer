@@ -1,0 +1,13 @@
+{
+    "Statement": [
+        {
+            "Sid": "AllowS3ExceptSensitive",
+            "Effect": "Allow",
+            "Action": "s3:*",
+            "NotResource": [
+                "arn:aws:s3:::sensitive-bucket",
+                "arn:aws:s3:::sensitive-bucket/*"
+            ]
+        }
+    ]
+}

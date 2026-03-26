@@ -1,0 +1,13 @@
+{
+    "Statement": [
+        {
+            "Sid": "AllowCrossAccountViaRoot",
+            "Effect": "Allow",
+            "Principal": {
+                "AWS": "arn:aws:iam::999888777666:root"
+            },
+            "Action": "s3:GetObject",
+            "Resource": "arn:aws:s3:::shared-bucket/*"
+        }
+    ]
+}

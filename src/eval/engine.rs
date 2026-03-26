@@ -33,9 +33,9 @@ pub struct NamedPolicy {
     pub policy: Policy,
 }
 
-/// SCPs at an OU level.
+/// Policies at an OU level in the organization hierarchy.
 #[derive(Debug, Clone)]
-pub struct OuScpSet {
+pub struct OuPolicySet {
     /// The OU ID.
     pub ou_id: String,
     /// The OU name (optional).
@@ -56,18 +56,18 @@ pub struct OuScpSet {
 ///
 /// // Create an empty hierarchy (allows everything by default)
 /// let hierarchy = OrganizationHierarchy::default();
-/// assert!(hierarchy.root_scps.is_empty());
-/// assert!(hierarchy.ou_scps.is_empty());
-/// assert!(hierarchy.account_scps.is_empty());
+/// assert!(hierarchy.root_policies.is_empty());
+/// assert!(hierarchy.ou_policies.is_empty());
+/// assert!(hierarchy.account_policies.is_empty());
 /// ```
 #[derive(Debug, Clone, Default)]
 pub struct OrganizationHierarchy {
-    /// SCPs at organization root level.
-    pub root_scps: Vec<NamedPolicy>,
-    /// SCPs at each OU level in the path (ordered from root to account).
-    pub ou_scps: Vec<OuScpSet>,
-    /// SCPs directly attached to the account.
-    pub account_scps: Vec<NamedPolicy>,
+    /// Policies at organization root level.
+    pub root_policies: Vec<NamedPolicy>,
+    /// Policies at each OU level in the path (ordered from root to account).
+    pub ou_policies: Vec<OuPolicySet>,
+    /// Policies directly attached to the account.
+    pub account_policies: Vec<NamedPolicy>,
 }
 
 /// The complete set of policies to evaluate.
@@ -229,9 +229,9 @@ impl EvaluationEngine {
     /// let policies = PolicySet {
     ///     identity_policies: vec![NamedPolicy::new("EC2FullAccess", identity)],
     ///     scp_hierarchy: Some(OrganizationHierarchy {
-    ///         root_scps: vec![NamedPolicy::new("FullAccess", full_access.clone())],
-    ///         ou_scps: vec![],
-    ///         account_scps: vec![
+    ///         root_policies: vec![NamedPolicy::new("FullAccess", full_access.clone())],
+    ///         ou_policies: vec![],
+    ///         account_policies: vec![
     ///             NamedPolicy::new("FullAccess", full_access),
     ///             NamedPolicy::new("RegionRestriction", scp),
     ///         ],
@@ -498,10 +498,10 @@ impl EvaluationEngine {
         // Check SCP hierarchy for denies (skip for anonymous - no principal in org)
         if !is_anonymous && let Some(hierarchy) = &policies.scp_hierarchy {
             let all_scps: Vec<_> = hierarchy
-                .root_scps
+                .root_policies
                 .iter()
-                .chain(hierarchy.ou_scps.iter().flat_map(|ou| &ou.policies))
-                .chain(&hierarchy.account_scps)
+                .chain(hierarchy.ou_policies.iter().flat_map(|ou| &ou.policies))
+                .chain(&hierarchy.account_policies)
                 .cloned()
                 .collect();
 
@@ -515,10 +515,10 @@ impl EvaluationEngine {
         // Check RCP hierarchy for denies (RCPs still apply to anonymous - they protect resources)
         if let Some(hierarchy) = &policies.rcp_hierarchy {
             let all_rcps: Vec<_> = hierarchy
-                .root_scps
+                .root_policies
                 .iter()
-                .chain(hierarchy.ou_scps.iter().flat_map(|ou| &ou.policies))
-                .chain(&hierarchy.account_scps)
+                .chain(hierarchy.ou_policies.iter().flat_map(|ou| &ou.policies))
+                .chain(&hierarchy.account_policies)
                 .cloned()
                 .collect();
 
@@ -911,9 +911,9 @@ mod tests {
 
         let policies = PolicySet {
             scp_hierarchy: Some(OrganizationHierarchy {
-                root_scps: vec![scp],
-                ou_scps: vec![],
-                account_scps: vec![],
+                root_policies: vec![scp],
+                ou_policies: vec![],
+                account_policies: vec![],
             }),
             identity_policies: vec![full_access_policy()],
             ..Default::default()
@@ -1028,9 +1028,9 @@ mod tests {
 
         let policies = PolicySet {
             scp_hierarchy: Some(OrganizationHierarchy {
-                root_scps: vec![full_access.clone()],
-                ou_scps: vec![],
-                account_scps: vec![],
+                root_policies: vec![full_access.clone()],
+                ou_policies: vec![],
+                account_policies: vec![],
             }),
             identity_policies: vec![full_access.clone()],
             permission_boundaries: vec![full_access.clone()],
@@ -1209,9 +1209,9 @@ mod tests {
 
         let policies = PolicySet {
             scp_hierarchy: Some(OrganizationHierarchy {
-                root_scps: vec![scp],
-                ou_scps: vec![],
-                account_scps: vec![],
+                root_policies: vec![scp],
+                ou_policies: vec![],
+                account_policies: vec![],
             }),
             identity_policies: vec![full_access_policy()],
             ..Default::default()
@@ -1248,9 +1248,9 @@ mod tests {
 
         let policies = PolicySet {
             scp_hierarchy: Some(OrganizationHierarchy {
-                root_scps: vec![scp],
-                ou_scps: vec![],
-                account_scps: vec![],
+                root_policies: vec![scp],
+                ou_policies: vec![],
+                account_policies: vec![],
             }),
             identity_policies: vec![full_access_policy()],
             ..Default::default()
