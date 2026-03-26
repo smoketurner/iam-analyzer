@@ -23,7 +23,7 @@ pub use context_bags::{
     SessionContext,
 };
 pub use decision::{Decision, EvaluationResult, PolicyType, ReasoningStep};
-pub use engine::{EvaluationEngine, NamedPolicy, OrganizationHierarchy, OuScpSet, PolicySet};
+pub use engine::{EvaluationEngine, NamedPolicy, OrganizationHierarchy, OuPolicySet, PolicySet};
 pub use hierarchy::{HierarchyResult, evaluate_rcp_hierarchy, evaluate_scp_hierarchy};
 pub use matchers::{MatchResult, statement_matches};
 pub use principal::{PrincipalType, infer_principal_type, is_service_linked_role};

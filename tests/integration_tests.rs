@@ -206,9 +206,9 @@ fn test_scp_full_access_allows() {
 
     let policies = PolicySet {
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![load_policy("tests/fixtures/scp/full-aws-access.json")],
-            ou_scps: vec![],
-            account_scps: vec![],
+            root_policies: vec![load_policy("tests/fixtures/scp/full-aws-access.json")],
+            ou_policies: vec![],
+            account_policies: vec![],
         }),
         identity_policies: vec![load_policy("tests/fixtures/identity/allow-s3-full.json")],
         ..Default::default()
@@ -231,12 +231,12 @@ fn test_scp_deny_leave_organization() {
 
     let policies = PolicySet {
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![
+            root_policies: vec![
                 load_policy("tests/fixtures/scp/full-aws-access.json"),
                 load_policy("tests/fixtures/scp/deny-leave-organization.json"),
             ],
-            ou_scps: vec![],
-            account_scps: vec![],
+            ou_policies: vec![],
+            account_policies: vec![],
         }),
         identity_policies: vec![load_policy("tests/fixtures/identity/allow-s3-full.json")],
         ..Default::default()
@@ -503,9 +503,9 @@ fn test_all_policies_must_allow() {
 
     let policies = PolicySet {
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![load_policy("tests/fixtures/scp/full-aws-access.json")],
-            ou_scps: vec![],
-            account_scps: vec![],
+            root_policies: vec![load_policy("tests/fixtures/scp/full-aws-access.json")],
+            ou_policies: vec![],
+            account_policies: vec![],
         }),
         identity_policies: vec![load_policy("tests/fixtures/identity/allow-s3-full.json")],
         permission_boundaries: vec![load_policy(
@@ -544,10 +544,10 @@ fn test_scp_region_restriction_allows_us_region() {
     let policies = PolicySet {
         identity_policies: vec![load_policy("tests/fixtures/identity/allow-ec2-full.json")],
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![load_policy("tests/fixtures/scp/full-aws-access.json")],
+            root_policies: vec![load_policy("tests/fixtures/scp/full-aws-access.json")],
             // Account level needs BOTH: an Allow SCP + the deny SCP
             // This mirrors AWS behavior where each level must have an Allow
-            account_scps: vec![
+            account_policies: vec![
                 load_policy("tests/fixtures/scp/full-aws-access.json"),
                 load_policy("tests/fixtures/scp/deny-region-outside-us.json"),
             ],
@@ -578,8 +578,8 @@ fn test_scp_region_restriction_allows_us_west_2() {
     let policies = PolicySet {
         identity_policies: vec![load_policy("tests/fixtures/identity/allow-ec2-full.json")],
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![load_policy("tests/fixtures/scp/full-aws-access.json")],
-            account_scps: vec![
+            root_policies: vec![load_policy("tests/fixtures/scp/full-aws-access.json")],
+            account_policies: vec![
                 load_policy("tests/fixtures/scp/full-aws-access.json"),
                 load_policy("tests/fixtures/scp/deny-region-outside-us.json"),
             ],
@@ -609,8 +609,8 @@ fn test_scp_region_restriction_denies_non_us_region() {
     let policies = PolicySet {
         identity_policies: vec![load_policy("tests/fixtures/identity/allow-ec2-full.json")],
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![load_policy("tests/fixtures/scp/full-aws-access.json")],
-            account_scps: vec![
+            root_policies: vec![load_policy("tests/fixtures/scp/full-aws-access.json")],
+            account_policies: vec![
                 load_policy("tests/fixtures/scp/full-aws-access.json"),
                 load_policy("tests/fixtures/scp/deny-region-outside-us.json"),
             ],
@@ -641,8 +641,8 @@ fn test_scp_region_restriction_denies_ap_region() {
     let policies = PolicySet {
         identity_policies: vec![load_policy("tests/fixtures/identity/allow-ec2-full.json")],
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![load_policy("tests/fixtures/scp/full-aws-access.json")],
-            account_scps: vec![
+            root_policies: vec![load_policy("tests/fixtures/scp/full-aws-access.json")],
+            account_policies: vec![
                 load_policy("tests/fixtures/scp/full-aws-access.json"),
                 load_policy("tests/fixtures/scp/deny-region-outside-us.json"),
             ],
@@ -677,8 +677,8 @@ fn test_condition_string_not_equals_single_value_match() {
     let policies = PolicySet {
         identity_policies: vec![load_policy("tests/fixtures/identity/allow-ec2-full.json")],
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![load_policy("tests/fixtures/scp/full-aws-access.json")],
-            account_scps: vec![
+            root_policies: vec![load_policy("tests/fixtures/scp/full-aws-access.json")],
+            account_policies: vec![
                 load_policy("tests/fixtures/scp/full-aws-access.json"),
                 load_policy("tests/fixtures/conditions/string-not-equals-single.json"),
             ],
@@ -709,8 +709,8 @@ fn test_condition_string_not_equals_single_value_no_match() {
     let policies = PolicySet {
         identity_policies: vec![load_policy("tests/fixtures/identity/allow-ec2-full.json")],
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![load_policy("tests/fixtures/scp/full-aws-access.json")],
-            account_scps: vec![
+            root_policies: vec![load_policy("tests/fixtures/scp/full-aws-access.json")],
+            account_policies: vec![
                 load_policy("tests/fixtures/scp/full-aws-access.json"),
                 load_policy("tests/fixtures/conditions/string-not-equals-single.json"),
             ],
@@ -741,8 +741,8 @@ fn test_condition_string_not_equals_multiple_values_match_one() {
     let policies = PolicySet {
         identity_policies: vec![load_policy("tests/fixtures/identity/allow-ec2-full.json")],
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![load_policy("tests/fixtures/scp/full-aws-access.json")],
-            account_scps: vec![
+            root_policies: vec![load_policy("tests/fixtures/scp/full-aws-access.json")],
+            account_policies: vec![
                 load_policy("tests/fixtures/scp/full-aws-access.json"),
                 load_policy("tests/fixtures/conditions/string-not-equals-multiple.json"),
             ],
@@ -773,8 +773,8 @@ fn test_condition_string_not_equals_multiple_values_match_none() {
     let policies = PolicySet {
         identity_policies: vec![load_policy("tests/fixtures/identity/allow-ec2-full.json")],
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![load_policy("tests/fixtures/scp/full-aws-access.json")],
-            account_scps: vec![
+            root_policies: vec![load_policy("tests/fixtures/scp/full-aws-access.json")],
+            account_policies: vec![
                 load_policy("tests/fixtures/scp/full-aws-access.json"),
                 load_policy("tests/fixtures/conditions/string-not-equals-multiple.json"),
             ],
@@ -805,8 +805,8 @@ fn test_condition_not_ip_address_in_whitelist() {
     let policies = PolicySet {
         identity_policies: vec![load_policy("tests/fixtures/identity/allow-s3-full.json")],
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![load_policy("tests/fixtures/scp/full-aws-access.json")],
-            account_scps: vec![
+            root_policies: vec![load_policy("tests/fixtures/scp/full-aws-access.json")],
+            account_policies: vec![
                 load_policy("tests/fixtures/scp/full-aws-access.json"),
                 load_policy("tests/fixtures/conditions/not-ip-address-multiple.json"),
             ],
@@ -837,8 +837,8 @@ fn test_condition_not_ip_address_not_in_whitelist() {
     let policies = PolicySet {
         identity_policies: vec![load_policy("tests/fixtures/identity/allow-s3-full.json")],
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![load_policy("tests/fixtures/scp/full-aws-access.json")],
-            account_scps: vec![
+            root_policies: vec![load_policy("tests/fixtures/scp/full-aws-access.json")],
+            account_policies: vec![
                 load_policy("tests/fixtures/scp/full-aws-access.json"),
                 load_policy("tests/fixtures/conditions/not-ip-address-multiple.json"),
             ],
@@ -868,8 +868,8 @@ fn test_condition_arn_not_like_principal_in_list() {
     let policies = PolicySet {
         identity_policies: vec![load_policy("tests/fixtures/identity/allow-s3-full.json")],
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![load_policy("tests/fixtures/scp/full-aws-access.json")],
-            account_scps: vec![
+            root_policies: vec![load_policy("tests/fixtures/scp/full-aws-access.json")],
+            account_policies: vec![
                 load_policy("tests/fixtures/scp/full-aws-access.json"),
                 load_policy("tests/fixtures/conditions/arn-not-like-multiple.json"),
             ],
@@ -899,8 +899,8 @@ fn test_condition_arn_not_like_principal_not_in_list() {
     let policies = PolicySet {
         identity_policies: vec![load_policy("tests/fixtures/identity/allow-s3-full.json")],
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![load_policy("tests/fixtures/scp/full-aws-access.json")],
-            account_scps: vec![
+            root_policies: vec![load_policy("tests/fixtures/scp/full-aws-access.json")],
+            account_policies: vec![
                 load_policy("tests/fixtures/scp/full-aws-access.json"),
                 load_policy("tests/fixtures/conditions/arn-not-like-multiple.json"),
             ],
@@ -1084,9 +1084,9 @@ fn test_service_linked_role_bypasses_scp() {
 
     let policies = PolicySet {
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![NamedPolicy::new("RestrictiveSCP", restrictive_scp)],
-            ou_scps: vec![],
-            account_scps: vec![],
+            root_policies: vec![NamedPolicy::new("RestrictiveSCP", restrictive_scp)],
+            ou_policies: vec![],
+            account_policies: vec![],
         }),
         identity_policies: vec![NamedPolicy::new("FullAccess", full_access_identity)],
         ..Default::default()
@@ -1134,9 +1134,9 @@ fn test_regular_role_blocked_by_scp() {
 
     let policies = PolicySet {
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![NamedPolicy::new("RestrictiveSCP", restrictive_scp)],
-            ou_scps: vec![],
-            account_scps: vec![],
+            root_policies: vec![NamedPolicy::new("RestrictiveSCP", restrictive_scp)],
+            ou_policies: vec![],
+            account_policies: vec![],
         }),
         identity_policies: vec![NamedPolicy::new("FullAccess", full_access_identity)],
         ..Default::default()
@@ -1189,9 +1189,9 @@ fn test_anonymous_request_bypasses_scp() {
 
     let policies = PolicySet {
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![NamedPolicy::new("DenyAllSCP", deny_all_scp)],
-            ou_scps: vec![],
-            account_scps: vec![],
+            root_policies: vec![NamedPolicy::new("DenyAllSCP", deny_all_scp)],
+            ou_policies: vec![],
+            account_policies: vec![],
         }),
         resource_policies: vec![NamedPolicy::new("PublicBucket", public_bucket_policy)],
         ..Default::default()
@@ -1327,9 +1327,9 @@ fn test_explicit_deny_short_circuits_before_scp() {
 
     let policies = PolicySet {
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![NamedPolicy::new("FullAccess", full_access_scp)],
-            ou_scps: vec![],
-            account_scps: vec![],
+            root_policies: vec![NamedPolicy::new("FullAccess", full_access_scp)],
+            ou_policies: vec![],
+            account_policies: vec![],
         }),
         identity_policies: vec![NamedPolicy::new("DenyPolicy", deny_policy)],
         ..Default::default()
@@ -1338,4 +1338,482 @@ fn test_explicit_deny_short_circuits_before_scp() {
     let result = engine.evaluate(&ctx, &policies);
     // Should be ExplicitDeny from identity policy, not Allow from SCP
     assert_eq!(result.decision, Decision::ExplicitDeny);
+}
+
+// =============================================================================
+// NotPrincipal Tests
+// =============================================================================
+
+/// NotPrincipal with Deny: admin user should NOT be denied (excluded from deny)
+#[test]
+fn test_not_principal_deny_excludes_specified_principal() {
+    let engine = EvaluationEngine::new();
+    let ctx = RequestContext::builder()
+        .action("s3:GetObject")
+        .resource("arn:aws:s3:::sensitive-bucket/file.txt")
+        .principal_arn("arn:aws:iam::123456789012:user/admin")
+        .principal_account("123456789012")
+        .build()
+        .unwrap();
+
+    let policies = PolicySet {
+        resource_policies: vec![load_policy(
+            "tests/fixtures/resource/s3-bucket-not-principal.json",
+        )],
+        ..Default::default()
+    };
+
+    let result = engine.evaluate(&ctx, &policies);
+    // Admin is excluded from NotPrincipal deny, so the Allow statement matches
+    assert_eq!(result.decision, Decision::Allow);
+}
+
+/// NotPrincipal with Deny: non-admin user should be denied
+#[test]
+fn test_not_principal_deny_applies_to_non_specified_principal() {
+    let engine = EvaluationEngine::new();
+    let ctx = RequestContext::builder()
+        .action("s3:GetObject")
+        .resource("arn:aws:s3:::sensitive-bucket/file.txt")
+        .principal_arn("arn:aws:iam::123456789012:user/regularuser")
+        .principal_account("123456789012")
+        .build()
+        .unwrap();
+
+    let policies = PolicySet {
+        resource_policies: vec![load_policy(
+            "tests/fixtures/resource/s3-bucket-not-principal.json",
+        )],
+        ..Default::default()
+    };
+
+    let result = engine.evaluate(&ctx, &policies);
+    // Regular user is NOT excluded from NotPrincipal deny, so explicit deny applies
+    assert_eq!(result.decision, Decision::ExplicitDeny);
+}
+
+// =============================================================================
+// NotResource Tests
+// =============================================================================
+
+/// NotResource: action on a non-sensitive resource should be allowed
+#[test]
+fn test_not_resource_allows_non_matching_resource() {
+    let engine = EvaluationEngine::new();
+    let ctx = RequestContext::builder()
+        .action("s3:GetObject")
+        .resource("arn:aws:s3:::public-bucket/file.txt")
+        .principal_arn("arn:aws:iam::123456789012:user/alice")
+        .principal_account("123456789012")
+        .build()
+        .unwrap();
+
+    let policies = PolicySet {
+        identity_policies: vec![load_policy(
+            "tests/fixtures/identity/allow-s3-not-resource.json",
+        )],
+        ..Default::default()
+    };
+
+    let result = engine.evaluate(&ctx, &policies);
+    // public-bucket is NOT in the NotResource list, so the Allow applies
+    assert_eq!(result.decision, Decision::Allow);
+}
+
+/// NotResource: action on a sensitive resource should be denied (implicit deny)
+#[test]
+fn test_not_resource_denies_matching_resource() {
+    let engine = EvaluationEngine::new();
+    let ctx = RequestContext::builder()
+        .action("s3:GetObject")
+        .resource("arn:aws:s3:::sensitive-bucket/secret.txt")
+        .principal_arn("arn:aws:iam::123456789012:user/alice")
+        .principal_account("123456789012")
+        .build()
+        .unwrap();
+
+    let policies = PolicySet {
+        identity_policies: vec![load_policy(
+            "tests/fixtures/identity/allow-s3-not-resource.json",
+        )],
+        ..Default::default()
+    };
+
+    let result = engine.evaluate(&ctx, &policies);
+    // sensitive-bucket/* IS in the NotResource list, so the Allow does NOT apply
+    assert_eq!(result.decision, Decision::ImplicitDeny);
+}
+
+// =============================================================================
+// Cross-Account with Specific Principal ARN Grant Tests
+// =============================================================================
+
+/// Cross-account: resource policy alone is NOT sufficient (identity policy also required)
+/// Per AWS docs, cross-account access requires both identity and resource policies to allow.
+#[test]
+fn test_cross_account_resource_policy_alone_insufficient() {
+    let engine = EvaluationEngine::new();
+    let ctx = RequestContext::builder()
+        .action("s3:GetObject")
+        .resource("arn:aws:s3:::shared-bucket/file.txt")
+        .principal_arn("arn:aws:iam::999888777666:user/external-user")
+        .principal_account("999888777666")
+        .resource_account("123456789012")
+        .build()
+        .unwrap();
+
+    let policies = PolicySet {
+        // No identity policy - only resource policy (even with specific ARN)
+        resource_policies: vec![load_policy(
+            "tests/fixtures/resource/s3-bucket-cross-account-specific-arn.json",
+        )],
+        ..Default::default()
+    };
+
+    let result = engine.evaluate(&ctx, &policies);
+    // Cross-account requires BOTH identity and resource policies
+    assert_eq!(result.decision, Decision::ImplicitDeny);
+}
+
+/// Cross-account: identity + resource policy together should allow
+#[test]
+fn test_cross_account_both_policies_allow() {
+    let engine = EvaluationEngine::new();
+    let ctx = RequestContext::builder()
+        .action("s3:GetObject")
+        .resource("arn:aws:s3:::shared-bucket/file.txt")
+        .principal_arn("arn:aws:iam::999888777666:user/external-user")
+        .principal_account("999888777666")
+        .resource_account("123456789012")
+        .build()
+        .unwrap();
+
+    let policies = PolicySet {
+        identity_policies: vec![load_policy("tests/fixtures/identity/allow-s3-read.json")],
+        resource_policies: vec![load_policy(
+            "tests/fixtures/resource/s3-bucket-cross-account-root.json",
+        )],
+        ..Default::default()
+    };
+
+    let result = engine.evaluate(&ctx, &policies);
+    // Both identity and resource policies allow, so cross-account succeeds
+    assert_eq!(result.decision, Decision::Allow);
+}
+
+// =============================================================================
+// Cross-Account + SCP/RCP/Permission Boundary Combination Tests
+// =============================================================================
+
+/// Cross-account: SCP in principal's org still applies
+#[test]
+fn test_cross_account_scp_blocks_even_with_both_policies() {
+    let engine = EvaluationEngine::new();
+    let ctx = RequestContext::builder()
+        .action("s3:GetObject")
+        .resource("arn:aws:s3:::shared-bucket/file.txt")
+        .principal_arn("arn:aws:iam::999888777666:user/external-user")
+        .principal_account("999888777666")
+        .resource_account("123456789012")
+        .build()
+        .unwrap();
+
+    // SCP that only allows EC2 actions (blocks S3)
+    let scp: Policy = serde_json::from_str(
+        r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Action": "ec2:*",
+                "Resource": "*"
+            }]
+        }"#,
+    )
+    .unwrap();
+
+    let policies = PolicySet {
+        scp_hierarchy: Some(OrganizationHierarchy {
+            root_policies: vec![NamedPolicy::new("EC2OnlySCP", scp)],
+            ou_policies: vec![],
+            account_policies: vec![],
+        }),
+        identity_policies: vec![load_policy("tests/fixtures/identity/allow-s3-read.json")],
+        resource_policies: vec![load_policy(
+            "tests/fixtures/resource/s3-bucket-cross-account-specific-arn.json",
+        )],
+        ..Default::default()
+    };
+
+    let result = engine.evaluate(&ctx, &policies);
+    // SCP blocks s3:GetObject even though identity + resource policies allow
+    assert_eq!(result.decision, Decision::ImplicitDeny);
+}
+
+/// Cross-account: permission boundary restricts even with both policies allowing
+#[test]
+fn test_cross_account_permission_boundary_restricts() {
+    let engine = EvaluationEngine::new();
+    let ctx = RequestContext::builder()
+        .action("s3:DeleteObject")
+        .resource("arn:aws:s3:::shared-bucket/file.txt")
+        .principal_arn("arn:aws:iam::999888777666:user/external-user")
+        .principal_account("999888777666")
+        .resource_account("123456789012")
+        .build()
+        .unwrap();
+
+    // Identity policy allows s3:*
+    let identity: Policy = serde_json::from_str(
+        r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Action": "s3:*",
+                "Resource": "*"
+            }]
+        }"#,
+    )
+    .unwrap();
+
+    // Resource policy allows s3:* to specific ARN
+    let resource: Policy = serde_json::from_str(
+        r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": {"AWS": "arn:aws:iam::999888777666:user/external-user"},
+                "Action": "s3:*",
+                "Resource": "arn:aws:s3:::shared-bucket/*"
+            }]
+        }"#,
+    )
+    .unwrap();
+
+    // Permission boundary only allows ec2:* (blocks all S3 actions)
+    let boundary: Policy = serde_json::from_str(
+        r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Action": "ec2:*",
+                "Resource": "*"
+            }]
+        }"#,
+    )
+    .unwrap();
+
+    let policies = PolicySet {
+        identity_policies: vec![NamedPolicy::new("S3Full", identity)],
+        resource_policies: vec![NamedPolicy::new("S3CrossAccount", resource)],
+        permission_boundaries: vec![NamedPolicy::new("EC2OnlyBoundary", boundary)],
+        ..Default::default()
+    };
+
+    let result = engine.evaluate(&ctx, &policies);
+    // Permission boundary blocks s3:DeleteObject (only allows ec2:*)
+    assert_eq!(result.decision, Decision::ImplicitDeny);
+}
+
+// =============================================================================
+// Date Condition Operator Tests
+// =============================================================================
+
+/// DateGreaterThan condition: request after cutoff should match
+#[test]
+fn test_date_greater_than_condition_allows() {
+    let engine = EvaluationEngine::new();
+
+    let policy: Policy = serde_json::from_str(
+        r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Action": "s3:GetObject",
+                "Resource": "*",
+                "Condition": {
+                    "DateGreaterThan": {
+                        "aws:CurrentTime": "2020-01-01T00:00:00Z"
+                    }
+                }
+            }]
+        }"#,
+    )
+    .unwrap();
+
+    let ctx = RequestContext::builder()
+        .action("s3:GetObject")
+        .resource("arn:aws:s3:::my-bucket/file.txt")
+        .principal_arn("arn:aws:iam::123456789012:user/alice")
+        .current_time("2025-06-15T12:00:00Z")
+        .build()
+        .unwrap();
+
+    let policies = PolicySet {
+        identity_policies: vec![NamedPolicy::new("TimePolicy", policy)],
+        ..Default::default()
+    };
+
+    let result = engine.evaluate(&ctx, &policies);
+    assert_eq!(result.decision, Decision::Allow);
+}
+
+/// DateLessThan condition: request after cutoff should NOT match (implicit deny)
+#[test]
+fn test_date_less_than_condition_denies_expired() {
+    let engine = EvaluationEngine::new();
+
+    let policy: Policy = serde_json::from_str(
+        r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Action": "s3:GetObject",
+                "Resource": "*",
+                "Condition": {
+                    "DateLessThan": {
+                        "aws:CurrentTime": "2020-12-31T23:59:59Z"
+                    }
+                }
+            }]
+        }"#,
+    )
+    .unwrap();
+
+    let ctx = RequestContext::builder()
+        .action("s3:GetObject")
+        .resource("arn:aws:s3:::my-bucket/file.txt")
+        .principal_arn("arn:aws:iam::123456789012:user/alice")
+        .current_time("2025-06-15T12:00:00Z")
+        .build()
+        .unwrap();
+
+    let policies = PolicySet {
+        identity_policies: vec![NamedPolicy::new("ExpiredPolicy", policy)],
+        ..Default::default()
+    };
+
+    let result = engine.evaluate(&ctx, &policies);
+    // 2025 is NOT less than 2020, so condition fails -> implicit deny
+    assert_eq!(result.decision, Decision::ImplicitDeny);
+}
+
+/// DateGreaterThanEquals + DateLessThanEquals: time-bounded access window
+#[test]
+fn test_date_range_condition_within_window() {
+    let engine = EvaluationEngine::new();
+
+    let policy: Policy = serde_json::from_str(
+        r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Action": "s3:GetObject",
+                "Resource": "*",
+                "Condition": {
+                    "DateGreaterThanEquals": {
+                        "aws:CurrentTime": "2025-01-01T00:00:00Z"
+                    },
+                    "DateLessThanEquals": {
+                        "aws:CurrentTime": "2025-12-31T23:59:59Z"
+                    }
+                }
+            }]
+        }"#,
+    )
+    .unwrap();
+
+    let ctx = RequestContext::builder()
+        .action("s3:GetObject")
+        .resource("arn:aws:s3:::my-bucket/file.txt")
+        .principal_arn("arn:aws:iam::123456789012:user/alice")
+        .current_time("2025-06-15T12:00:00Z")
+        .build()
+        .unwrap();
+
+    let policies = PolicySet {
+        identity_policies: vec![NamedPolicy::new("TimeBoundPolicy", policy)],
+        ..Default::default()
+    };
+
+    let result = engine.evaluate(&ctx, &policies);
+    assert_eq!(result.decision, Decision::Allow);
+}
+
+// =============================================================================
+// ForAllValues with Negated Operators
+// =============================================================================
+
+/// ForAllValues:StringEquals - all request tag keys must be in the allowed set
+#[test]
+fn test_for_all_values_string_equals_allows_subset_tags() {
+    let engine = EvaluationEngine::new();
+
+    // ForAllValues:StringEquals means: every context value must match at least one policy value
+    // This ensures all tag keys are within the allowed set
+    let policy: Policy = serde_json::from_str(
+        r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Action": "ec2:CreateTags",
+                "Resource": "*",
+                "Condition": {
+                    "ForAllValues:StringEquals": {
+                        "aws:TagKeys": ["Environment", "CostCenter", "Project"]
+                    }
+                }
+            }]
+        }"#,
+    )
+    .unwrap();
+
+    let ctx = RequestContext::builder()
+        .action("ec2:CreateTags")
+        .resource("arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0")
+        .principal_arn("arn:aws:iam::123456789012:user/alice")
+        .request_tag("Environment", "Production")
+        .request_tag("Project", "MyProject")
+        .build()
+        .unwrap();
+
+    let policies = PolicySet {
+        identity_policies: vec![NamedPolicy::new("TagPolicy", policy)],
+        ..Default::default()
+    };
+
+    let result = engine.evaluate(&ctx, &policies);
+    // Both "Environment" and "Project" are in the allowed set, so ForAllValues passes
+    assert_eq!(result.decision, Decision::Allow);
+}
+
+/// ForAllValues:StringEquals - fails when a tag key is NOT in the allowed set
+#[test]
+fn test_for_all_values_string_equals_denies_extra_tags() {
+    let engine = EvaluationEngine::new();
+
+    let policy: Policy = serde_json::from_str(
+        r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Action": "ec2:CreateTags",
+                "Resource": "*",
+                "Condition": {
+                    "ForAllValues:StringEquals": {
+                        "aws:TagKeys": ["Environment", "CostCenter"]
+                    }
+                }
+            }]
+        }"#,
+    )
+    .unwrap();
+
+    let ctx = RequestContext::builder()
+        .action("ec2:CreateTags")
+        .resource("arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0")
+        .principal_arn("arn:aws:iam::123456789012:user/alice")
+        .request_tag("Environment", "Production")
+        .request_tag("UnauthorizedTag", "SomeValue")
+        .build()
+        .unwrap();
+
+    let policies = PolicySet {
+        identity_policies: vec![NamedPolicy::new("TagPolicy", policy)],
+        ..Default::default()
+    };
+
+    let result = engine.evaluate(&ctx, &policies);
+    // "UnauthorizedTag" is NOT in ["Environment", "CostCenter"], so ForAllValues:StringEquals fails
+    assert_eq!(result.decision, Decision::ImplicitDeny);
 }

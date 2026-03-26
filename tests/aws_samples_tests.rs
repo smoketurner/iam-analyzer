@@ -75,8 +75,8 @@ fn test_null_operator_s3_encryption_missing_denied() {
 
     let policies = PolicySet {
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![full_aws_access()],
-            account_scps: vec![
+            root_policies: vec![full_aws_access()],
+            account_policies: vec![
                 full_aws_access(),
                 load_policy("tests/fixtures/aws-samples/scp/require-s3-encryption.json"),
             ],
@@ -109,8 +109,8 @@ fn test_null_operator_s3_encryption_present_allowed() {
 
     let policies = PolicySet {
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![full_aws_access()],
-            account_scps: vec![
+            root_policies: vec![full_aws_access()],
+            account_policies: vec![
                 full_aws_access(),
                 load_policy("tests/fixtures/aws-samples/scp/require-s3-encryption.json"),
             ],
@@ -146,7 +146,7 @@ fn test_null_operator_oidc_claim_present() {
 
     let policies = PolicySet {
         rcp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![
+            root_policies: vec![
                 full_aws_access(),
                 load_policy("tests/fixtures/aws-samples/rcp/restrict-github-oidc.json"),
             ],
@@ -182,7 +182,7 @@ fn test_null_operator_oidc_claim_trusted_org() {
 
     let policies = PolicySet {
         rcp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![
+            root_policies: vec![
                 full_aws_access(),
                 load_policy("tests/fixtures/aws-samples/rcp/restrict-github-oidc.json"),
             ],
@@ -219,8 +219,8 @@ fn test_numeric_less_than_kms_deletion_window_too_short() {
 
     let policies = PolicySet {
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![full_aws_access()],
-            account_scps: vec![
+            root_policies: vec![full_aws_access()],
+            account_policies: vec![
                 full_aws_access(),
                 load_policy("tests/fixtures/aws-samples/scp/enforce-kms-deletion-window.json"),
             ],
@@ -253,8 +253,8 @@ fn test_numeric_less_than_kms_deletion_window_sufficient() {
 
     let policies = PolicySet {
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![full_aws_access()],
-            account_scps: vec![
+            root_policies: vec![full_aws_access()],
+            account_policies: vec![
                 full_aws_access(),
                 load_policy("tests/fixtures/aws-samples/scp/enforce-kms-deletion-window.json"),
             ],
@@ -287,7 +287,7 @@ fn test_numeric_less_than_s3_tls_version_too_low() {
 
     let policies = PolicySet {
         rcp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![
+            root_policies: vec![
                 full_aws_access(),
                 load_policy("tests/fixtures/aws-samples/rcp/enforce-s3-tls-version.json"),
             ],
@@ -320,7 +320,7 @@ fn test_numeric_greater_than_presigned_url_too_old() {
 
     let policies = PolicySet {
         rcp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![
+            root_policies: vec![
                 full_aws_access(),
                 load_policy("tests/fixtures/aws-samples/rcp/enforce-s3-presigned-expiry.json"),
             ],
@@ -357,7 +357,7 @@ fn test_bool_if_exists_secure_transport_false_denied() {
 
     let policies = PolicySet {
         rcp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![
+            root_policies: vec![
                 full_aws_access(),
                 load_policy("tests/fixtures/aws-samples/rcp/enforce-https-only.json"),
             ],
@@ -390,7 +390,7 @@ fn test_bool_if_exists_secure_transport_true_allowed() {
 
     let policies = PolicySet {
         rcp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![
+            root_policies: vec![
                 full_aws_access(),
                 load_policy("tests/fixtures/aws-samples/rcp/enforce-https-only.json"),
             ],
@@ -423,8 +423,8 @@ fn test_bool_if_exists_mfa_required_denied() {
 
     let policies = PolicySet {
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![full_aws_access()],
-            account_scps: vec![
+            root_policies: vec![full_aws_access()],
+            account_policies: vec![
                 full_aws_access(),
                 load_policy("tests/fixtures/aws-samples/scp/require-mfa-for-iam.json"),
             ],
@@ -457,8 +457,8 @@ fn test_bool_if_exists_mfa_present_allowed() {
 
     let policies = PolicySet {
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![full_aws_access()],
-            account_scps: vec![
+            root_policies: vec![full_aws_access()],
+            account_policies: vec![
                 full_aws_access(),
                 load_policy("tests/fixtures/aws-samples/scp/require-mfa-for-iam.json"),
             ],
@@ -495,8 +495,8 @@ fn test_region_restriction_denied_outside_allowed() {
 
     let policies = PolicySet {
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![full_aws_access()],
-            account_scps: vec![
+            root_policies: vec![full_aws_access()],
+            account_policies: vec![
                 full_aws_access(),
                 load_policy("tests/fixtures/aws-samples/scp/deny-region-outside-allowed.json"),
             ],
@@ -529,8 +529,8 @@ fn test_region_restriction_allowed_in_us() {
 
     let policies = PolicySet {
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![full_aws_access()],
-            account_scps: vec![
+            root_policies: vec![full_aws_access()],
+            account_policies: vec![
                 full_aws_access(),
                 load_policy("tests/fixtures/aws-samples/scp/deny-region-outside-allowed.json"),
             ],
@@ -563,8 +563,8 @@ fn test_region_restriction_iam_exempt_via_notaction() {
 
     let policies = PolicySet {
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![full_aws_access()],
-            account_scps: vec![
+            root_policies: vec![full_aws_access()],
+            account_policies: vec![
                 full_aws_access(),
                 load_policy("tests/fixtures/aws-samples/scp/deny-region-outside-allowed.json"),
             ],
@@ -601,8 +601,8 @@ fn test_ec2_imdsv2_required_denied() {
 
     let policies = PolicySet {
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![full_aws_access()],
-            account_scps: vec![
+            root_policies: vec![full_aws_access()],
+            account_policies: vec![
                 full_aws_access(),
                 load_policy("tests/fixtures/aws-samples/scp/prevent-imdsv1.json"),
             ],
@@ -635,8 +635,8 @@ fn test_ec2_imdsv2_required_allowed() {
 
     let policies = PolicySet {
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![full_aws_access()],
-            account_scps: vec![
+            root_policies: vec![full_aws_access()],
+            account_policies: vec![
                 full_aws_access(),
                 load_policy("tests/fixtures/aws-samples/scp/prevent-imdsv1.json"),
             ],
@@ -670,7 +670,7 @@ fn test_kms_grant_for_aws_resource_denied() {
 
     let policies = PolicySet {
         rcp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![
+            root_policies: vec![
                 full_aws_access(),
                 load_policy("tests/fixtures/aws-samples/rcp/restrict-kms-grants.json"),
             ],
@@ -708,7 +708,7 @@ fn test_rcp_identity_perimeter_blocks_external_principal() {
 
     let policies = PolicySet {
         rcp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![
+            root_policies: vec![
                 full_aws_access(),
                 load_policy("tests/fixtures/aws-samples/rcp/identity-perimeter.json"),
             ],
@@ -742,7 +742,7 @@ fn test_rcp_identity_perimeter_allows_org_principal() {
 
     let policies = PolicySet {
         rcp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![
+            root_policies: vec![
                 full_aws_access(),
                 load_policy("tests/fixtures/aws-samples/rcp/identity-perimeter.json"),
             ],
@@ -777,7 +777,7 @@ fn test_rcp_identity_perimeter_allows_aws_service() {
 
     let policies = PolicySet {
         rcp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![
+            root_policies: vec![
                 full_aws_access(),
                 load_policy("tests/fixtures/aws-samples/rcp/identity-perimeter.json"),
             ],
@@ -909,8 +909,8 @@ fn test_for_all_values_called_via_allowed() {
 
     let policies = PolicySet {
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![full_aws_access()],
-            account_scps: vec![
+            root_policies: vec![full_aws_access()],
+            account_policies: vec![
                 full_aws_access(),
                 load_policy("tests/fixtures/aws-samples/scp/data-perimeter-resource.json"),
             ],
@@ -944,8 +944,8 @@ fn test_for_any_value_tag_keys_protected() {
 
     let policies = PolicySet {
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![full_aws_access()],
-            account_scps: vec![
+            root_policies: vec![full_aws_access()],
+            account_policies: vec![
                 full_aws_access(),
                 load_policy("tests/fixtures/aws-samples/scp/data-perimeter-governance.json"),
             ],
@@ -984,8 +984,8 @@ fn test_network_perimeter_allows_corporate_ip() {
 
     let policies = PolicySet {
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![full_aws_access()],
-            account_scps: vec![
+            root_policies: vec![full_aws_access()],
+            account_policies: vec![
                 full_aws_access(),
                 load_policy("tests/fixtures/aws-samples/scp/data-perimeter-network-vpceorgid.json"),
             ],
@@ -1020,8 +1020,8 @@ fn test_network_perimeter_denies_external_ip() {
 
     let policies = PolicySet {
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![full_aws_access()],
-            account_scps: vec![
+            root_policies: vec![full_aws_access()],
+            account_policies: vec![
                 full_aws_access(),
                 load_policy("tests/fixtures/aws-samples/scp/data-perimeter-network-vpceorgid.json"),
             ],
@@ -1056,8 +1056,8 @@ fn test_network_perimeter_allows_via_aws_service() {
 
     let policies = PolicySet {
         scp_hierarchy: Some(OrganizationHierarchy {
-            root_scps: vec![full_aws_access()],
-            account_scps: vec![
+            root_policies: vec![full_aws_access()],
+            account_policies: vec![
                 full_aws_access(),
                 load_policy("tests/fixtures/aws-samples/scp/data-perimeter-network-vpceorgid.json"),
             ],

@@ -1,0 +1,13 @@
+{
+    "Statement": [
+        {
+            "Sid": "AllowSpecificCrossAccountUser",
+            "Effect": "Allow",
+            "Principal": {
+                "AWS": "arn:aws:iam::999888777666:user/external-user"
+            },
+            "Action": "s3:GetObject",
+            "Resource": "arn:aws:s3:::shared-bucket/*"
+        }
+    ]
+}

@@ -9,7 +9,7 @@ use clap::Parser;
 use context_files::{PrincipalContextFile, RequestContextFile, ResourceContextFile};
 use iam_analyzer::error::{Error, Result};
 use iam_analyzer::eval::{
-    Decision, EvaluationEngine, EvaluationResult, NamedPolicy, OrganizationHierarchy, OuScpSet,
+    Decision, EvaluationEngine, EvaluationResult, NamedPolicy, OrganizationHierarchy, OuPolicySet,
     PolicySet, RequestContext, RequestContextBuilder,
 };
 use iam_analyzer::policy::{
@@ -377,33 +377,33 @@ fn build_policy_set(args: &Args, verbosity: u8) -> Result<PolicySet> {
         let (scp_hierarchy, rcp_hierarchy) = load_organization_config(config_path, verbosity)?;
 
         if let Some(hierarchy) = scp_hierarchy
-            && (!hierarchy.root_scps.is_empty()
-                || !hierarchy.ou_scps.is_empty()
-                || !hierarchy.account_scps.is_empty())
+            && (!hierarchy.root_policies.is_empty()
+                || !hierarchy.ou_policies.is_empty()
+                || !hierarchy.account_policies.is_empty())
         {
-            let count = hierarchy.root_scps.len()
+            let count = hierarchy.root_policies.len()
                 + hierarchy
-                    .ou_scps
+                    .ou_policies
                     .iter()
                     .map(|ou| ou.policies.len())
                     .sum::<usize>()
-                + hierarchy.account_scps.len();
+                + hierarchy.account_policies.len();
             verbose!(2, verbosity, "Loaded {} SCP policies in hierarchy", count);
             policies.scp_hierarchy = Some(hierarchy);
         }
 
         if let Some(hierarchy) = rcp_hierarchy
-            && (!hierarchy.root_scps.is_empty()
-                || !hierarchy.ou_scps.is_empty()
-                || !hierarchy.account_scps.is_empty())
+            && (!hierarchy.root_policies.is_empty()
+                || !hierarchy.ou_policies.is_empty()
+                || !hierarchy.account_policies.is_empty())
         {
-            let count = hierarchy.root_scps.len()
+            let count = hierarchy.root_policies.len()
                 + hierarchy
-                    .ou_scps
+                    .ou_policies
                     .iter()
                     .map(|ou| ou.policies.len())
                     .sum::<usize>()
-                + hierarchy.account_scps.len();
+                + hierarchy.account_policies.len();
             verbose!(2, verbosity, "Loaded {} RCP policies in hierarchy", count);
             policies.rcp_hierarchy = Some(hierarchy);
         }
@@ -479,7 +479,7 @@ fn build_hierarchy_from_config(
         let full_path = resolve_path(path, base_dir);
         verbose!(2, verbosity, "Loading root policy: {}", full_path.display());
         hierarchy
-            .root_scps
+            .root_policies
             .push(load_policy(&full_path, verbosity)?);
     }
 
@@ -492,7 +492,7 @@ fn build_hierarchy_from_config(
             verbose!(3, verbosity, "  Loading: {}", full_path.display());
             ou_policies.push(load_policy(&full_path, verbosity)?);
         }
-        hierarchy.ou_scps.push(OuScpSet {
+        hierarchy.ou_policies.push(OuPolicySet {
             ou_id: ou.id.clone(),
             ou_name: ou.name.clone(),
             policies: ou_policies,
@@ -509,7 +509,7 @@ fn build_hierarchy_from_config(
             full_path.display()
         );
         hierarchy
-            .account_scps
+            .account_policies
             .push(load_policy(&full_path, verbosity)?);
     }
 
@@ -860,29 +860,29 @@ fn validate_policies_against_services(
     }
 
     if let Some(hierarchy) = &policies.scp_hierarchy {
-        for np in &hierarchy.root_scps {
+        for np in &hierarchy.root_policies {
             all_policies.push(&np.policy);
         }
-        for ou in &hierarchy.ou_scps {
+        for ou in &hierarchy.ou_policies {
             for np in &ou.policies {
                 all_policies.push(&np.policy);
             }
         }
-        for np in &hierarchy.account_scps {
+        for np in &hierarchy.account_policies {
             all_policies.push(&np.policy);
         }
     }
 
     if let Some(hierarchy) = &policies.rcp_hierarchy {
-        for np in &hierarchy.root_scps {
+        for np in &hierarchy.root_policies {
             all_policies.push(&np.policy);
         }
-        for ou in &hierarchy.ou_scps {
+        for ou in &hierarchy.ou_policies {
             for np in &ou.policies {
                 all_policies.push(&np.policy);
             }
         }
-        for np in &hierarchy.account_scps {
+        for np in &hierarchy.account_policies {
             all_policies.push(&np.policy);
         }
     }

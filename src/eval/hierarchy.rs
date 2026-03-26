@@ -21,7 +21,7 @@
 use super::context::RequestContext;
 use super::decision::{PolicyType, ReasoningStep};
 #[cfg(test)]
-use super::engine::OuScpSet;
+use super::engine::OuPolicySet;
 use super::engine::{NamedPolicy, OrganizationHierarchy};
 use super::matchers::statement_matches;
 use crate::error::Result;
@@ -84,9 +84,9 @@ pub fn evaluate_scp_hierarchy(
     let mut reasoning = Vec::new();
 
     // 1. Check root SCPs
-    if !hierarchy.root_scps.is_empty() {
+    if !hierarchy.root_policies.is_empty() {
         let (has_allow, has_deny, steps) =
-            evaluate_policies_at_level(&hierarchy.root_scps, context, PolicyType::Scp, "Root")?;
+            evaluate_policies_at_level(&hierarchy.root_policies, context, PolicyType::Scp, "Root")?;
         reasoning.extend(steps);
 
         if has_deny {
@@ -102,7 +102,7 @@ pub fn evaluate_scp_hierarchy(
     }
 
     // 2. Check each OU level in order (from root towards account)
-    for ou in &hierarchy.ou_scps {
+    for ou in &hierarchy.ou_policies {
         if !ou.policies.is_empty() {
             let level_name = ou
                 .ou_name
@@ -131,9 +131,9 @@ pub fn evaluate_scp_hierarchy(
     }
 
     // 3. Check account SCPs
-    if !hierarchy.account_scps.is_empty() {
+    if !hierarchy.account_policies.is_empty() {
         let (has_allow, has_deny, steps) = evaluate_policies_at_level(
-            &hierarchy.account_scps,
+            &hierarchy.account_policies,
             context,
             PolicyType::Scp,
             "Account",
@@ -163,9 +163,9 @@ pub fn evaluate_rcp_hierarchy(
     let mut reasoning = Vec::new();
 
     // 1. Check root RCPs
-    if !hierarchy.root_scps.is_empty() {
+    if !hierarchy.root_policies.is_empty() {
         let (has_allow, has_deny, steps) =
-            evaluate_policies_at_level(&hierarchy.root_scps, context, PolicyType::Rcp, "Root")?;
+            evaluate_policies_at_level(&hierarchy.root_policies, context, PolicyType::Rcp, "Root")?;
         reasoning.extend(steps);
 
         if has_deny {
@@ -181,7 +181,7 @@ pub fn evaluate_rcp_hierarchy(
     }
 
     // 2. Check each OU level
-    for ou in &hierarchy.ou_scps {
+    for ou in &hierarchy.ou_policies {
         if !ou.policies.is_empty() {
             let level_name = ou
                 .ou_name
@@ -210,9 +210,9 @@ pub fn evaluate_rcp_hierarchy(
     }
 
     // 3. Check account RCPs
-    if !hierarchy.account_scps.is_empty() {
+    if !hierarchy.account_policies.is_empty() {
         let (has_allow, has_deny, steps) = evaluate_policies_at_level(
-            &hierarchy.account_scps,
+            &hierarchy.account_policies,
             context,
             PolicyType::Rcp,
             "Account",
@@ -417,13 +417,13 @@ mod tests {
     #[test]
     fn test_scp_all_levels_allow() {
         let hierarchy = OrganizationHierarchy {
-            root_scps: vec![full_access_scp()],
-            ou_scps: vec![OuScpSet {
+            root_policies: vec![full_access_scp()],
+            ou_policies: vec![OuPolicySet {
                 ou_id: "ou-1234".to_string(),
                 ou_name: Some("Production".to_string()),
                 policies: vec![full_access_scp()],
             }],
-            account_scps: vec![full_access_scp()],
+            account_policies: vec![full_access_scp()],
         };
 
         let ctx = make_context("s3:GetObject", "arn:aws:s3:::bucket/key");
@@ -438,9 +438,9 @@ mod tests {
     fn test_scp_root_blocks() {
         // Root only allows S3 and EC2, but request is for DynamoDB
         let hierarchy = OrganizationHierarchy {
-            root_scps: vec![allow_s3_ec2_scp()],
-            ou_scps: vec![],
-            account_scps: vec![],
+            root_policies: vec![allow_s3_ec2_scp()],
+            ou_policies: vec![],
+            account_policies: vec![],
         };
 
         let ctx = make_context(
@@ -458,13 +458,13 @@ mod tests {
     fn test_scp_ou_blocks() {
         // Root allows all, but OU only allows S3/EC2
         let hierarchy = OrganizationHierarchy {
-            root_scps: vec![full_access_scp()],
-            ou_scps: vec![OuScpSet {
+            root_policies: vec![full_access_scp()],
+            ou_policies: vec![OuPolicySet {
                 ou_id: "ou-1234".to_string(),
                 ou_name: Some("Production".to_string()),
                 policies: vec![allow_s3_ec2_scp()],
             }],
-            account_scps: vec![],
+            account_policies: vec![],
         };
 
         let ctx = make_context(
@@ -488,13 +488,13 @@ mod tests {
     fn test_scp_account_blocks() {
         // Root and OU allow all, but account only allows S3/EC2
         let hierarchy = OrganizationHierarchy {
-            root_scps: vec![full_access_scp()],
-            ou_scps: vec![OuScpSet {
+            root_policies: vec![full_access_scp()],
+            ou_policies: vec![OuPolicySet {
                 ou_id: "ou-1234".to_string(),
                 ou_name: Some("Production".to_string()),
                 policies: vec![full_access_scp()],
             }],
-            account_scps: vec![allow_s3_ec2_scp()],
+            account_policies: vec![allow_s3_ec2_scp()],
         };
 
         let ctx = make_context("iam:CreateUser", "arn:aws:iam::123456789012:user/newuser");
@@ -508,13 +508,13 @@ mod tests {
     #[test]
     fn test_scp_explicit_deny() {
         let hierarchy = OrganizationHierarchy {
-            root_scps: vec![full_access_scp()],
-            ou_scps: vec![OuScpSet {
+            root_policies: vec![full_access_scp()],
+            ou_policies: vec![OuPolicySet {
                 ou_id: "ou-1234".to_string(),
                 ou_name: Some("Production".to_string()),
                 policies: vec![deny_delete_scp(), full_access_scp()],
             }],
-            account_scps: vec![],
+            account_policies: vec![],
         };
 
         let ctx = make_context("s3:DeleteObject", "arn:aws:s3:::bucket/key");
@@ -528,20 +528,20 @@ mod tests {
     fn test_scp_multiple_ous() {
         // Test nested OUs where one blocks
         let hierarchy = OrganizationHierarchy {
-            root_scps: vec![full_access_scp()],
-            ou_scps: vec![
-                OuScpSet {
+            root_policies: vec![full_access_scp()],
+            ou_policies: vec![
+                OuPolicySet {
                     ou_id: "ou-1".to_string(),
                     ou_name: Some("Engineering".to_string()),
                     policies: vec![full_access_scp()],
                 },
-                OuScpSet {
+                OuPolicySet {
                     ou_id: "ou-2".to_string(),
                     ou_name: Some("Web-Tier".to_string()),
                     policies: vec![allow_s3_ec2_scp()], // Only S3/EC2
                 },
             ],
-            account_scps: vec![],
+            account_policies: vec![],
         };
 
         // S3 should be allowed
@@ -563,9 +563,9 @@ mod tests {
     fn test_scp_empty_hierarchy() {
         // No SCPs means allow
         let hierarchy = OrganizationHierarchy {
-            root_scps: vec![],
-            ou_scps: vec![],
-            account_scps: vec![],
+            root_policies: vec![],
+            ou_policies: vec![],
+            account_policies: vec![],
         };
 
         let ctx = make_context("s3:GetObject", "arn:aws:s3:::bucket/key");
@@ -668,9 +668,9 @@ mod tests {
         );
 
         let hierarchy = OrganizationHierarchy {
-            root_scps: vec![full_access_scp()],
-            ou_scps: vec![],
-            account_scps: vec![ec2_only_scp, allow_s3_only_scp()], // Two policies, OR logic
+            root_policies: vec![full_access_scp()],
+            ou_policies: vec![],
+            account_policies: vec![ec2_only_scp, allow_s3_only_scp()], // Two policies, OR logic
         };
 
         let ctx = make_context("s3:GetObject", "arn:aws:s3:::bucket/key");
@@ -687,9 +687,9 @@ mod tests {
     fn test_scp_deny_overrides_or_logic() {
         // Two SCPs: one allows S3, one denies S3 - deny should win
         let hierarchy = OrganizationHierarchy {
-            root_scps: vec![full_access_scp()],
-            ou_scps: vec![],
-            account_scps: vec![allow_s3_only_scp(), deny_s3_scp()],
+            root_policies: vec![full_access_scp()],
+            ou_policies: vec![],
+            account_policies: vec![allow_s3_only_scp(), deny_s3_scp()],
         };
 
         let ctx = make_context("s3:GetObject", "arn:aws:s3:::bucket/key");
@@ -704,30 +704,30 @@ mod tests {
     #[test]
     fn test_scp_deeply_nested_ous_all_allow() {
         let hierarchy = OrganizationHierarchy {
-            root_scps: vec![full_access_scp()],
-            ou_scps: vec![
-                OuScpSet {
+            root_policies: vec![full_access_scp()],
+            ou_policies: vec![
+                OuPolicySet {
                     ou_id: "ou-root".to_string(),
                     ou_name: Some("Root-OU".to_string()),
                     policies: vec![full_access_scp()],
                 },
-                OuScpSet {
+                OuPolicySet {
                     ou_id: "ou-dept".to_string(),
                     ou_name: Some("Department".to_string()),
                     policies: vec![full_access_scp()],
                 },
-                OuScpSet {
+                OuPolicySet {
                     ou_id: "ou-team".to_string(),
                     ou_name: Some("Team".to_string()),
                     policies: vec![full_access_scp()],
                 },
-                OuScpSet {
+                OuPolicySet {
                     ou_id: "ou-project".to_string(),
                     ou_name: Some("Project".to_string()),
                     policies: vec![full_access_scp()],
                 },
             ],
-            account_scps: vec![full_access_scp()],
+            account_policies: vec![full_access_scp()],
         };
 
         let ctx = make_context("s3:GetObject", "arn:aws:s3:::bucket/key");
@@ -741,25 +741,25 @@ mod tests {
     #[test]
     fn test_scp_deeply_nested_ous_middle_blocks() {
         let hierarchy = OrganizationHierarchy {
-            root_scps: vec![full_access_scp()],
-            ou_scps: vec![
-                OuScpSet {
+            root_policies: vec![full_access_scp()],
+            ou_policies: vec![
+                OuPolicySet {
                     ou_id: "ou-root".to_string(),
                     ou_name: Some("Root-OU".to_string()),
                     policies: vec![full_access_scp()],
                 },
-                OuScpSet {
+                OuPolicySet {
                     ou_id: "ou-dept".to_string(),
                     ou_name: Some("Department".to_string()),
                     policies: vec![allow_s3_ec2_scp()], // Only allows S3/EC2
                 },
-                OuScpSet {
+                OuPolicySet {
                     ou_id: "ou-team".to_string(),
                     ou_name: Some("Team".to_string()),
                     policies: vec![full_access_scp()],
                 },
             ],
-            account_scps: vec![full_access_scp()],
+            account_policies: vec![full_access_scp()],
         };
 
         // DynamoDB should be blocked at Department level
@@ -785,20 +785,20 @@ mod tests {
     #[test]
     fn test_scp_ou_with_empty_policies_skipped() {
         let hierarchy = OrganizationHierarchy {
-            root_scps: vec![full_access_scp()],
-            ou_scps: vec![
-                OuScpSet {
+            root_policies: vec![full_access_scp()],
+            ou_policies: vec![
+                OuPolicySet {
                     ou_id: "ou-parent".to_string(),
                     ou_name: Some("Parent".to_string()),
                     policies: vec![full_access_scp()],
                 },
-                OuScpSet {
+                OuPolicySet {
                     ou_id: "ou-empty".to_string(),
                     ou_name: Some("EmptyOU".to_string()),
                     policies: vec![], // Empty - should be skipped
                 },
             ],
-            account_scps: vec![full_access_scp()],
+            account_policies: vec![full_access_scp()],
         };
 
         let ctx = make_context("s3:GetObject", "arn:aws:s3:::bucket/key");
@@ -812,13 +812,13 @@ mod tests {
     #[test]
     fn test_scp_ou_without_name_uses_id() {
         let hierarchy = OrganizationHierarchy {
-            root_scps: vec![full_access_scp()],
-            ou_scps: vec![OuScpSet {
+            root_policies: vec![full_access_scp()],
+            ou_policies: vec![OuPolicySet {
                 ou_id: "ou-abc123".to_string(),
                 ou_name: None, // No name
                 policies: vec![allow_s3_only_scp()],
             }],
-            account_scps: vec![],
+            account_policies: vec![],
         };
 
         let ctx = make_context(
@@ -845,13 +845,13 @@ mod tests {
     #[test]
     fn test_rcp_all_levels_allow() {
         let hierarchy = OrganizationHierarchy {
-            root_scps: vec![full_access_scp()], // Note: uses root_scps field for RCPs too
-            ou_scps: vec![OuScpSet {
+            root_policies: vec![full_access_scp()], // Note: uses root_policies field for RCPs too
+            ou_policies: vec![OuPolicySet {
                 ou_id: "ou-1234".to_string(),
                 ou_name: Some("Production".to_string()),
                 policies: vec![full_access_scp()],
             }],
-            account_scps: vec![full_access_scp()],
+            account_policies: vec![full_access_scp()],
         };
 
         let ctx = make_context("s3:GetObject", "arn:aws:s3:::bucket/key");
@@ -865,9 +865,9 @@ mod tests {
     #[test]
     fn test_rcp_explicit_deny() {
         let hierarchy = OrganizationHierarchy {
-            root_scps: vec![deny_s3_scp()],
-            ou_scps: vec![],
-            account_scps: vec![],
+            root_policies: vec![deny_s3_scp()],
+            ou_policies: vec![],
+            account_policies: vec![],
         };
 
         let ctx = make_context("s3:GetObject", "arn:aws:s3:::bucket/key");
@@ -888,9 +888,9 @@ mod tests {
     #[test]
     fn test_rcp_implicit_deny_no_allow() {
         let hierarchy = OrganizationHierarchy {
-            root_scps: vec![allow_s3_only_scp()], // Only allows S3
-            ou_scps: vec![],
-            account_scps: vec![],
+            root_policies: vec![allow_s3_only_scp()], // Only allows S3
+            ou_policies: vec![],
+            account_policies: vec![],
         };
 
         let ctx = make_context(
