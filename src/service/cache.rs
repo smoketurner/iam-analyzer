@@ -136,8 +136,11 @@ mod tests {
     /// when tests run in parallel.
     fn test_cache() -> ServiceCache {
         let id = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let temp_dir = std::env::temp_dir()
-            .join(format!("iam-analyzer-test-cache-{}-{}", std::process::id(), id));
+        let temp_dir = std::env::temp_dir().join(format!(
+            "iam-analyzer-test-cache-{}-{}",
+            std::process::id(),
+            id
+        ));
         ServiceCache {
             cache_dir: temp_dir,
         }
