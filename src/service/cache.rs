@@ -128,10 +128,16 @@ impl Default for ServiceCache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
+    use std::sync::atomic::{AtomicU32, Ordering};
 
+    static TEST_COUNTER: AtomicU32 = AtomicU32::new(0);
+
+    /// Create a unique cache directory per test to avoid race conditions
+    /// when tests run in parallel.
     fn test_cache() -> ServiceCache {
-        let temp_dir = env::temp_dir().join("iam-analyzer-test-cache");
+        let id = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let temp_dir = std::env::temp_dir()
+            .join(format!("iam-analyzer-test-cache-{}-{}", std::process::id(), id));
         ServiceCache {
             cache_dir: temp_dir,
         }
@@ -165,5 +171,7 @@ mod tests {
 
         assert!(!cache.has("nonexistent"));
         assert!(cache.load("nonexistent").unwrap().is_none());
+
+        let _ = cache.clear();
     }
 }
