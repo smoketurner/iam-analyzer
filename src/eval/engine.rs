@@ -429,9 +429,12 @@ impl EvaluationEngine {
         let resource_allow = self.check_resource_allows(context, policies, &mut all_reasoning)?;
 
         if context.is_cross_account {
-            // Special case: sts:AssumeRole* actions - trust policy alone grants access
-            // AWS allows cross-account role assumption with only the trust policy
-            let is_role_assumption = context.action.to_lowercase().starts_with("sts:assumerole");
+            // Special case: federated sts:AssumeRoleWith* actions - trust policy alone
+            // grants access. Plain sts:AssumeRole is a standard cross-account action that
+            // still requires an identity policy on the calling principal.
+            let action_lower = context.action.to_lowercase();
+            let is_role_assumption = action_lower == "sts:assumerolewithsaml"
+                || action_lower == "sts:assumerolewithwebidentity";
 
             if is_role_assumption {
                 // Trust policy alone can grant cross-account role access
@@ -1074,7 +1077,45 @@ mod tests {
 
     #[test]
     fn test_cross_account_assume_role_trust_policy_only() {
-        // sts:AssumeRole should succeed with only trust policy (no identity policy)
+        // sts:AssumeRoleWithSAML uses the trust-policy-only path: a trust policy
+        // alone is sufficient for federated role assumption.
+        let engine = EvaluationEngine::new();
+        let ctx = RequestContext::builder()
+            .action("sts:AssumeRoleWithSAML")
+            .resource("arn:aws:iam::222222222222:role/SamlRole")
+            .principal_account("111111111111")
+            .resource_account("222222222222")
+            .cross_account(true)
+            .build()
+            .unwrap();
+
+        let trust_policy = parse_policy(
+            "TrustPolicy",
+            r#"{
+                "Statement": [{
+                    "Effect": "Allow",
+                    "Principal": "*",
+                    "Action": "sts:AssumeRoleWithSAML",
+                    "Resource": "*"
+                }]
+            }"#,
+        );
+
+        // Only resource policy (trust policy), no identity policy
+        let policies = PolicySet {
+            resource_policies: vec![trust_policy],
+            ..Default::default()
+        };
+
+        let result = engine.evaluate(&ctx, &policies);
+        assert_eq!(result.decision, Decision::Allow);
+    }
+
+    #[test]
+    fn test_cross_account_assume_role_requires_both_policies() {
+        // Plain sts:AssumeRole is a standard cross-account action: the calling
+        // principal must have an identity policy that allows it, in addition to
+        // the role's trust policy. A trust policy alone is not enough.
         let engine = EvaluationEngine::new();
         let ctx = RequestContext::builder()
             .action("sts:AssumeRole")
@@ -1100,15 +1141,15 @@ mod tests {
             }"#,
         );
 
-        // Only resource policy (trust policy), no identity policy
+        // Only trust policy, no identity policy
         let policies = PolicySet {
             resource_policies: vec![trust_policy],
             ..Default::default()
         };
 
         let result = engine.evaluate(&ctx, &policies);
-        // Cross-account role assumption should succeed with only trust policy
-        assert_eq!(result.decision, Decision::Allow);
+        assert_eq!(result.decision, Decision::ImplicitDeny);
+        assert_eq!(result.deciding_policy_type, Some(PolicyType::IdentityBased));
     }
 
     #[test]
