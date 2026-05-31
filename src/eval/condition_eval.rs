@@ -89,8 +89,7 @@ impl ConditionEvaluator {
         // For negated operators, apply NOR semantics: return true only if no context
         // value matches any policy value via the positive counterpart operator.
         // This implements: ForAllValues:NegOp(C,P) = NOT(ForAnyValue:PosOp(C,P)).
-        if Self::is_negated_operator(base_operator) {
-            let positive = Self::positive_counterpart(base_operator);
+        if let Some(positive) = Self::positive_counterpart(base_operator) {
             for ctx_val in context_values {
                 for policy_val in policy_values {
                     if Self::compare_single(positive, ctx_val, policy_val)? {
@@ -130,8 +129,7 @@ impl ConditionEvaluator {
         // For negated operators, apply NOR semantics: true iff there exists a context
         // value that does not match ANY policy value via the positive counterpart.
         // This implements: ForAnyValue:NegOp(C,P) = NOT(ForAllValues:PosOp(C,P)).
-        if Self::is_negated_operator(base_operator) {
-            let positive = Self::positive_counterpart(base_operator);
+        if let Some(positive) = Self::positive_counterpart(base_operator) {
             for ctx_val in context_values {
                 let mut matched_any = false;
                 for policy_val in policy_values {
@@ -173,45 +171,35 @@ impl ConditionEvaluator {
         Ok(false)
     }
 
-    /// Check if an operator is a negated operator that requires AND logic
-    /// for multiple policy values (NOR semantics).
+    /// Return the positive counterpart of a negated operator, or `None` if the
+    /// operator is not a negated operator.
     ///
-    /// Per AWS documentation, negated operators like StringNotEquals with multiple
-    /// values use NOR logic: the condition matches only if the context value is
-    /// different from ALL policy values.
-    fn is_negated_operator(operator: &str) -> bool {
-        matches!(
-            operator,
-            "StringNotEquals"
-                | "StringNotEqualsIgnoreCase"
-                | "StringNotLike"
-                | "NumericNotEquals"
-                | "DateNotEquals"
-                | "ArnNotEquals"
-                | "ArnNotLike"
-                | "NotIpAddress"
-        )
+    /// Negated operators (e.g., `StringNotEquals`) use NOR semantics for multi-value
+    /// conditions: the condition matches only if the context value is different from
+    /// ALL policy values. The positive counterpart is used to implement
+    /// `ForAllValues:NegOp(C,P) = NOT(ForAnyValue:PosOp(C,P))` and
+    /// `ForAnyValue:NegOp(C,P) = NOT(ForAllValues:PosOp(C,P))`.
+    ///
+    /// Adding a new negated variant requires only this single match arm; there is
+    /// no separate `is_negated_operator` predicate that can drift out of sync.
+    fn positive_counterpart(operator: &str) -> Option<&'static str> {
+        match operator {
+            "StringNotEquals" => Some("StringEquals"),
+            "StringNotEqualsIgnoreCase" => Some("StringEqualsIgnoreCase"),
+            "StringNotLike" => Some("StringLike"),
+            "NumericNotEquals" => Some("NumericEquals"),
+            "DateNotEquals" => Some("DateEquals"),
+            "ArnNotEquals" => Some("ArnEquals"),
+            "ArnNotLike" => Some("ArnLike"),
+            "NotIpAddress" => Some("IpAddress"),
+            _ => None,
+        }
     }
 
-    /// Return the positive counterpart of a negated operator.
-    ///
-    /// Used by [`Self::evaluate_for_all_values`] to implement NOR semantics:
-    /// `ForAllValues:NegOp(C,P) = NOT(ForAnyValue:PosOp(C,P))`.
-    ///
-    /// Only call this after confirming the operator via [`Self::is_negated_operator`].
-    fn positive_counterpart(negated_operator: &str) -> &'static str {
-        match negated_operator {
-            "StringNotEquals" => "StringEquals",
-            "StringNotEqualsIgnoreCase" => "StringEqualsIgnoreCase",
-            "StringNotLike" => "StringLike",
-            "NumericNotEquals" => "NumericEquals",
-            "DateNotEquals" => "DateEquals",
-            "ArnNotEquals" => "ArnEquals",
-            "ArnNotLike" => "ArnLike",
-            "NotIpAddress" => "IpAddress",
-            // Unreachable: guarded by is_negated_operator at every call site.
-            _ => "StringEquals",
-        }
+    /// Check if an operator is a negated operator that requires AND logic
+    /// for multiple policy values (NOR semantics).
+    fn is_negated_operator(operator: &str) -> bool {
+        Self::positive_counterpart(operator).is_some()
     }
 
     /// Evaluate negated operators with NOR semantics:
