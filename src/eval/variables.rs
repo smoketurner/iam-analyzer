@@ -125,13 +125,21 @@ fn resolve_variable(var_name: &str, context: &RequestContext) -> Option<String> 
 /// Derive aws:username from a principal ARN.
 ///
 /// AWS automatically populates aws:username based on the principal type:
-/// - IAM user: the username portion (arn:aws:iam::123456789012:user/johndoe -> johndoe)
+/// - IAM user: the username portion (arn:aws:iam::123456789012:user/[path/]johndoe -> johndoe)
 /// - Assumed role: the session name (arn:aws:sts::123456789012:assumed-role/Role/Session -> Session)
 /// - Federated user: the user name (arn:aws:sts::123456789012:federated-user/Name -> Name)
+///
+/// IAM usernames cannot contain `/`, so any slashes after `user/` are path separators.
+/// Only the final segment is returned.
 fn derive_username_from_arn(arn: &str) -> Option<String> {
-    // IAM user: arn:aws:iam::123456789012:user/johndoe
+    // IAM user: arn:aws:iam::123456789012:user/[path/]johndoe
+    // IAM usernames cannot contain '/', so take the last segment after any path components.
     if let Some(user_part) = arn.rsplit_once("user/") {
-        return Some(user_part.1.to_string());
+        let username = user_part
+            .1
+            .rsplit_once('/')
+            .map_or(user_part.1, |(_, last)| last);
+        return Some(username.to_string());
     }
     // Assumed role: arn:aws:sts::123456789012:assumed-role/RoleName/SessionName
     if arn.contains("assumed-role/")
@@ -342,6 +350,45 @@ mod tests {
         let result = resolve_variables("${aws:username}", &ctx);
         // Should extract the username from federated user ARN
         assert_eq!(result, "FederatedUserName");
+    }
+
+    #[test]
+    fn test_username_simple_path() {
+        let ctx = RequestContext::builder()
+            .action("s3:GetObject")
+            .resource("arn:aws:s3:::bucket/key")
+            .principal_arn("arn:aws:iam::123456789012:user/johndoe")
+            .build()
+            .unwrap();
+
+        let result = resolve_variables("${aws:username}", &ctx);
+        assert_eq!(result, "johndoe");
+    }
+
+    #[test]
+    fn test_username_with_single_path_component() {
+        let ctx = RequestContext::builder()
+            .action("s3:GetObject")
+            .resource("arn:aws:s3:::bucket/key")
+            .principal_arn("arn:aws:iam::123456789012:user/developers/johndoe")
+            .build()
+            .unwrap();
+
+        let result = resolve_variables("${aws:username}", &ctx);
+        assert_eq!(result, "johndoe");
+    }
+
+    #[test]
+    fn test_username_with_deep_path() {
+        let ctx = RequestContext::builder()
+            .action("s3:GetObject")
+            .resource("arn:aws:s3:::bucket/key")
+            .principal_arn("arn:aws:iam::123456789012:user/path/to/deep/alice")
+            .build()
+            .unwrap();
+
+        let result = resolve_variables("${aws:username}", &ctx);
+        assert_eq!(result, "alice");
     }
 
     #[test]
