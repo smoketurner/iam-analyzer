@@ -494,18 +494,21 @@ pub fn validate_against_service_definitions(
                             &statement_actions
                         };
 
-                        let valid_for_any = actions_to_check.iter().any(|action| {
-                            validate_condition_key(key, action, loader)
-                                .map(|r| r.valid)
-                                .unwrap_or(true)
-                        });
-
-                        if !valid_for_any {
-                            // Re-run against the first action to get the error message.
-                            let result = validate_condition_key(key, actions_to_check[0], loader)?;
-                            if let Some(error) = result.error {
-                                errors.push(error);
+                        let mut valid_for_any = false;
+                        let mut first_error: Option<String> = None;
+                        for action in actions_to_check {
+                            let result = validate_condition_key(key, action, loader)?;
+                            if result.valid {
+                                valid_for_any = true;
+                                break;
                             }
+                            if first_error.is_none() {
+                                first_error = result.error;
+                            }
+                        }
+
+                        if !valid_for_any && let Some(error) = first_error {
+                            errors.push(error);
                         }
                     }
                 }
