@@ -117,11 +117,36 @@ impl ConditionEvaluator {
     }
 
     /// Evaluate ForAnyValue: at least one context value must match at least one policy value.
+    ///
+    /// For negated operators (e.g., `StringNotEquals`), AWS defines:
+    /// `ForAnyValue:StringNotEquals(C, P) = NOT(ForAllValues:StringEquals(C, P))`
+    /// — the condition is true when at least one context value differs from every
+    /// policy value via the corresponding positive operator.
     fn evaluate_for_any_value(
         base_operator: &str,
         context_values: &[String],
         policy_values: &[String],
     ) -> Result<bool> {
+        // For negated operators, apply NOR semantics: true iff there exists a context
+        // value that does not match ANY policy value via the positive counterpart.
+        // This implements: ForAnyValue:NegOp(C,P) = NOT(ForAllValues:PosOp(C,P)).
+        if Self::is_negated_operator(base_operator) {
+            let positive = Self::positive_counterpart(base_operator);
+            for ctx_val in context_values {
+                let mut matched_any = false;
+                for policy_val in policy_values {
+                    if Self::compare_single(positive, ctx_val, policy_val)? {
+                        matched_any = true;
+                        break;
+                    }
+                }
+                if !matched_any {
+                    return Ok(true);
+                }
+            }
+            return Ok(false);
+        }
+
         for ctx_val in context_values {
             for policy_val in policy_values {
                 if Self::compare_single(base_operator, ctx_val, policy_val)? {
@@ -877,6 +902,22 @@ mod tests {
         assert!(
             result,
             "Should pass because ap-south-1 is not equal to us-east-1 (satisfies StringNotEquals)"
+        );
+    }
+
+    #[test]
+    fn test_for_any_value_string_not_equals_ctx_matches_one_policy() {
+        // ctx = ["us-east-1"], policy = ["us-east-1", "eu-west-1"]
+        // Under AWS NOR semantics: ForAnyValue:StringNotEquals(C,P) = NOT(ForAllValues:StringEquals(C,P)).
+        // "us-east-1" matches policy[0], so ForAllValues:StringEquals = true → ForAnyValue:NotEquals = false.
+        let ctx = vec!["us-east-1".to_string()];
+        let policy = vec!["us-east-1".to_string(), "eu-west-1".to_string()];
+        let result =
+            ConditionEvaluator::evaluate("ForAnyValue:StringNotEquals", Some(&ctx), &policy)
+                .unwrap();
+        assert!(
+            !result,
+            "Should fail: the only context value matches a policy value, so no context value differs from ALL policy values"
         );
     }
 
