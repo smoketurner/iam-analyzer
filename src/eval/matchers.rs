@@ -346,13 +346,21 @@ pub fn statement_matches(statement: &Statement, context: &RequestContext) -> Res
 }
 
 /// Check if the action block matches the request action.
+///
+/// For the `"*"` wildcard shortcut, the request action must still be a valid
+/// `service:action` string. This mirrors `ActionPattern::matches`, which parses
+/// the request action and returns `false` for malformed strings.
 fn action_matches(action_block: &ActionBlock, request_action: &str) -> Result<bool> {
     let patterns = action_block.to_vec();
 
     for pattern_str in patterns {
-        // Handle "*" wildcard
+        // Handle "*" wildcard — but only for well-formed `service:action` strings.
+        // Delegating to ActionPattern::parse ensures consistent validation: the
+        // parse call fails for anything without exactly one colon and non-empty
+        // parts on both sides, so malformed actions are rejected here just as
+        // they are in the non-wildcard path below.
         if pattern_str == "*" {
-            return Ok(true);
+            return Ok(ActionPattern::parse(request_action).is_ok());
         }
 
         // Parse and match
@@ -478,8 +486,8 @@ fn principal_type_matches(
             }
             "SERVICE" => {
                 // Service principals like "s3.amazonaws.com"
-                if let Some(ctx_service) = context.get_context_key("aws:principalservicename") {
-                    for svc in ctx_service {
+                if let Some(ctx_service) = context.get_condition_value("aws:principalservicename") {
+                    for svc in &ctx_service {
                         if glob_match(value, svc) {
                             return Ok(true);
                         }
@@ -488,8 +496,8 @@ fn principal_type_matches(
             }
             "FEDERATED" => {
                 // Federated identity providers
-                if let Some(ctx_fed) = context.get_context_key("aws:federatedprovider") {
-                    for fed in ctx_fed {
+                if let Some(ctx_fed) = context.get_condition_value("aws:federatedprovider") {
+                    for fed in &ctx_fed {
                         if glob_match(value, fed) {
                             return Ok(true);
                         }
@@ -628,6 +636,19 @@ mod tests {
         let action_block = ActionBlock::Single("*".to_string());
         assert!(action_matches(&action_block, "s3:GetObject").unwrap());
         assert!(action_matches(&action_block, "ec2:RunInstances").unwrap());
+    }
+
+    #[test]
+    fn test_action_wildcard_with_invalid_format() {
+        let action_block = ActionBlock::Single("*".to_string());
+
+        // Valid actions should match
+        assert!(action_matches(&action_block, "s3:GetObject").unwrap());
+        assert!(action_matches(&action_block, "custom:MyAction").unwrap());
+        assert!(action_matches(&action_block, "s3:GetObjct").unwrap()); // typo but valid format
+
+        // Invalid format should NOT match
+        assert!(!action_matches(&action_block, "invalid").unwrap());
     }
 
     #[test]
@@ -1163,6 +1184,62 @@ mod tests {
             .action("sts:AssumeRole")
             .resource("arn:aws:iam::123456789012:role/EC2Role")
             .context_key("aws:principalservicename", "ec2.amazonaws.com")
+            .build()
+            .unwrap();
+        let result = statement_matches(&policy.statement[0], &ctx).unwrap();
+        assert!(result.matches);
+    }
+
+    /// Service principal match using context-bag builder method.
+    /// Regression for issue #13: `principal_service_name()` writes only to the
+    /// principal context bag, so matchers must read via `get_condition_value`.
+    #[test]
+    fn test_service_principal_via_builder_method() {
+        let policy = parse_policy(
+            r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": {
+                    "Service": "lambda.amazonaws.com"
+                },
+                "Action": "sts:AssumeRole",
+                "Resource": "*"
+            }]
+        }"#,
+        );
+
+        let ctx = RequestContext::builder()
+            .action("sts:AssumeRole")
+            .resource("arn:aws:iam::123456789012:role/LambdaRole")
+            .principal_service_name("lambda.amazonaws.com")
+            .build()
+            .unwrap();
+        let result = statement_matches(&policy.statement[0], &ctx).unwrap();
+        assert!(result.matches);
+    }
+
+    /// Federated principal match using context-bag builder method.
+    /// Regression for issue #13: `federated_provider()` writes only to the
+    /// session context bag, so matchers must read via `get_condition_value`.
+    #[test]
+    fn test_federated_principal_via_builder_method() {
+        let policy = parse_policy(
+            r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": {
+                    "Federated": "cognito-identity.amazonaws.com"
+                },
+                "Action": "sts:AssumeRoleWithWebIdentity",
+                "Resource": "*"
+            }]
+        }"#,
+        );
+
+        let ctx = RequestContext::builder()
+            .action("sts:AssumeRoleWithWebIdentity")
+            .resource("arn:aws:iam::123456789012:role/CognitoRole")
+            .federated_provider("cognito-identity.amazonaws.com")
             .build()
             .unwrap();
         let result = statement_matches(&policy.statement[0], &ctx).unwrap();
