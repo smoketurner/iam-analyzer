@@ -71,6 +71,11 @@ impl ConditionEvaluator {
     }
 
     /// Evaluate ForAllValues: every context value must match at least one policy value.
+    ///
+    /// For negated operators (e.g., `StringNotEquals`), AWS defines:
+    /// `ForAllValues:StringNotEquals(C, P) = NOT(ForAnyValue:StringEquals(C, P))`
+    /// — the condition is true only when no context value matches any policy value via
+    /// the corresponding positive operator.
     fn evaluate_for_all_values(
         base_operator: &str,
         context_values: &[String],
@@ -78,6 +83,20 @@ impl ConditionEvaluator {
     ) -> Result<bool> {
         // Empty context values satisfy ForAllValues
         if context_values.is_empty() {
+            return Ok(true);
+        }
+
+        // For negated operators, apply NOR semantics: return true only if no context
+        // value matches any policy value via the positive counterpart operator.
+        // This implements: ForAllValues:NegOp(C,P) = NOT(ForAnyValue:PosOp(C,P)).
+        if let Some(positive) = Self::positive_counterpart(base_operator) {
+            for ctx_val in context_values {
+                for policy_val in policy_values {
+                    if Self::compare_single(positive, ctx_val, policy_val)? {
+                        return Ok(false);
+                    }
+                }
+            }
             return Ok(true);
         }
 
@@ -97,11 +116,35 @@ impl ConditionEvaluator {
     }
 
     /// Evaluate ForAnyValue: at least one context value must match at least one policy value.
+    ///
+    /// For negated operators (e.g., `StringNotEquals`), AWS defines:
+    /// `ForAnyValue:StringNotEquals(C, P) = NOT(ForAllValues:StringEquals(C, P))`
+    /// — the condition is true when at least one context value differs from every
+    /// policy value via the corresponding positive operator.
     fn evaluate_for_any_value(
         base_operator: &str,
         context_values: &[String],
         policy_values: &[String],
     ) -> Result<bool> {
+        // For negated operators, apply NOR semantics: true iff there exists a context
+        // value that does not match ANY policy value via the positive counterpart.
+        // This implements: ForAnyValue:NegOp(C,P) = NOT(ForAllValues:PosOp(C,P)).
+        if let Some(positive) = Self::positive_counterpart(base_operator) {
+            for ctx_val in context_values {
+                let mut matched_any = false;
+                for policy_val in policy_values {
+                    if Self::compare_single(positive, ctx_val, policy_val)? {
+                        matched_any = true;
+                        break;
+                    }
+                }
+                if !matched_any {
+                    return Ok(true);
+                }
+            }
+            return Ok(false);
+        }
+
         for ctx_val in context_values {
             for policy_val in policy_values {
                 if Self::compare_single(base_operator, ctx_val, policy_val)? {
@@ -128,24 +171,35 @@ impl ConditionEvaluator {
         Ok(false)
     }
 
+    /// Return the positive counterpart of a negated operator, or `None` if the
+    /// operator is not a negated operator.
+    ///
+    /// Negated operators (e.g., `StringNotEquals`) use NOR semantics for multi-value
+    /// conditions: the condition matches only if the context value is different from
+    /// ALL policy values. The positive counterpart is used to implement
+    /// `ForAllValues:NegOp(C,P) = NOT(ForAnyValue:PosOp(C,P))` and
+    /// `ForAnyValue:NegOp(C,P) = NOT(ForAllValues:PosOp(C,P))`.
+    ///
+    /// Adding a new negated variant requires only this single match arm; there is
+    /// no separate `is_negated_operator` predicate that can drift out of sync.
+    fn positive_counterpart(operator: &str) -> Option<&'static str> {
+        match operator {
+            "StringNotEquals" => Some("StringEquals"),
+            "StringNotEqualsIgnoreCase" => Some("StringEqualsIgnoreCase"),
+            "StringNotLike" => Some("StringLike"),
+            "NumericNotEquals" => Some("NumericEquals"),
+            "DateNotEquals" => Some("DateEquals"),
+            "ArnNotEquals" => Some("ArnEquals"),
+            "ArnNotLike" => Some("ArnLike"),
+            "NotIpAddress" => Some("IpAddress"),
+            _ => None,
+        }
+    }
+
     /// Check if an operator is a negated operator that requires AND logic
     /// for multiple policy values (NOR semantics).
-    ///
-    /// Per AWS documentation, negated operators like StringNotEquals with multiple
-    /// values use NOR logic: the condition matches only if the context value is
-    /// different from ALL policy values.
     fn is_negated_operator(operator: &str) -> bool {
-        matches!(
-            operator,
-            "StringNotEquals"
-                | "StringNotEqualsIgnoreCase"
-                | "StringNotLike"
-                | "NumericNotEquals"
-                | "DateNotEquals"
-                | "ArnNotEquals"
-                | "ArnNotLike"
-                | "NotIpAddress"
-        )
+        Self::positive_counterpart(operator).is_some()
     }
 
     /// Evaluate negated operators with NOR semantics:
@@ -747,6 +801,129 @@ mod tests {
         assert!(
             ConditionEvaluator::evaluate("ForAnyValue:StringEqualsIfExists", None, &policy)
                 .unwrap()
+        );
+    }
+
+    // ===================
+    // ForAllValues with negated operators (issue #9)
+    // ===================
+
+    #[test]
+    fn test_for_all_values_string_not_equals_context_matches_policy() {
+        let ctx = vec!["us-east-1".to_string()];
+        let policy = vec!["us-east-1".to_string(), "eu-west-1".to_string()];
+        let result =
+            ConditionEvaluator::evaluate("ForAllValues:StringNotEquals", Some(&ctx), &policy)
+                .unwrap();
+        assert!(!result, "Should fail when context matches policy");
+    }
+
+    #[test]
+    fn test_for_all_values_string_not_equals_multiple_context_one_match() {
+        let ctx = vec!["us-east-1".to_string(), "ap-south-1".to_string()];
+        let policy = vec!["us-east-1".to_string(), "eu-west-1".to_string()];
+        let result =
+            ConditionEvaluator::evaluate("ForAllValues:StringNotEquals", Some(&ctx), &policy)
+                .unwrap();
+        assert!(!result, "Should fail when any context matches any policy");
+    }
+
+    #[test]
+    fn test_for_all_values_string_not_equals_no_overlap() {
+        let ctx = vec!["ap-northeast-1".to_string(), "ap-south-1".to_string()];
+        let policy = vec!["us-east-1".to_string(), "eu-west-1".to_string()];
+        let result =
+            ConditionEvaluator::evaluate("ForAllValues:StringNotEquals", Some(&ctx), &policy)
+                .unwrap();
+        assert!(
+            result,
+            "Should pass when no context value matches any policy value"
+        );
+    }
+
+    #[test]
+    fn test_for_all_values_string_not_equals_empty_context() {
+        let ctx: Vec<String> = vec![];
+        let policy = vec!["us-east-1".to_string()];
+        let result =
+            ConditionEvaluator::evaluate("ForAllValues:StringNotEquals", Some(&ctx), &policy)
+                .unwrap();
+        assert!(result, "Empty context satisfies ForAllValues");
+    }
+
+    #[test]
+    fn test_for_all_values_arn_not_like_context_matches() {
+        let ctx = vec!["arn:aws:s3:::my-bucket/file.txt".to_string()];
+        let policy = vec!["arn:aws:s3:::my-bucket/*".to_string()];
+        let result =
+            ConditionEvaluator::evaluate("ForAllValues:ArnNotLike", Some(&ctx), &policy).unwrap();
+        assert!(
+            !result,
+            "Should fail when context ARN matches policy pattern"
+        );
+    }
+
+    #[test]
+    fn test_for_all_values_arn_not_like_no_match() {
+        let ctx = vec!["arn:aws:s3:::other-bucket/file.txt".to_string()];
+        let policy = vec!["arn:aws:s3:::my-bucket/*".to_string()];
+        let result =
+            ConditionEvaluator::evaluate("ForAllValues:ArnNotLike", Some(&ctx), &policy).unwrap();
+        assert!(
+            result,
+            "Should pass when no context ARN matches any policy pattern"
+        );
+    }
+
+    // ===================
+    // ForAnyValue with negated operators
+    // ===================
+
+    #[test]
+    fn test_for_any_value_string_not_equals_one_differs() {
+        // "ap-south-1" differs from both policy values → ForAnyValue:StringNotEquals = true
+        let ctx = vec!["us-east-1".to_string(), "ap-south-1".to_string()];
+        let policy = vec!["us-east-1".to_string(), "eu-west-1".to_string()];
+        let result =
+            ConditionEvaluator::evaluate("ForAnyValue:StringNotEquals", Some(&ctx), &policy)
+                .unwrap();
+        assert!(
+            result,
+            "Should pass because ap-south-1 is not equal to us-east-1 (satisfies StringNotEquals)"
+        );
+    }
+
+    #[test]
+    fn test_for_any_value_string_not_equals_ctx_matches_one_policy() {
+        // ctx = ["us-east-1"], policy = ["us-east-1", "eu-west-1"]
+        // Under AWS NOR semantics: ForAnyValue:StringNotEquals(C,P) = NOT(ForAllValues:StringEquals(C,P)).
+        // "us-east-1" matches policy[0], so ForAllValues:StringEquals = true → ForAnyValue:NotEquals = false.
+        let ctx = vec!["us-east-1".to_string()];
+        let policy = vec!["us-east-1".to_string(), "eu-west-1".to_string()];
+        let result =
+            ConditionEvaluator::evaluate("ForAnyValue:StringNotEquals", Some(&ctx), &policy)
+                .unwrap();
+        assert!(
+            !result,
+            "Should fail: the only context value matches a policy value, so no context value differs from ALL policy values"
+        );
+    }
+
+    #[test]
+    fn test_for_any_value_string_not_equals_all_match() {
+        // Both context values equal a policy value; StringNotEquals never returns true for any pair
+        // where ctx == policy, but each ctx val still differs from the other policy val,
+        // so ForAnyValue:StringNotEquals returns true (at least one (ctx,policy) pair differs).
+        // This test validates the existing ForAnyValue behavior is unchanged.
+        let ctx = vec!["us-east-1".to_string()];
+        let policy = vec!["us-east-1".to_string()];
+        let result =
+            ConditionEvaluator::evaluate("ForAnyValue:StringNotEquals", Some(&ctx), &policy)
+                .unwrap();
+        // StringNotEquals("us-east-1", "us-east-1") = false → ForAnyValue = false
+        assert!(
+            !result,
+            "Should fail when the only context value equals the only policy value"
         );
     }
 
