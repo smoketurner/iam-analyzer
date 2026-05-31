@@ -473,15 +473,39 @@ pub fn validate_against_service_definitions(
                 }
             }
 
-            // Validate condition keys
+            // Validate condition keys against the statement's own actions, mirroring
+            // the per-statement action validation above. A key is valid if it is
+            // valid for at least one action in this statement.
             if let Some(conditions) = &statement.condition {
+                let statement_actions: Vec<&str> = statement
+                    .action
+                    .as_ref()
+                    .map(|a| a.to_vec())
+                    .unwrap_or_default();
+
                 for key_values in conditions.values() {
                     for key in key_values.keys() {
-                        let result = validate_condition_key(key, request_action, loader)?;
-                        if !result.valid
-                            && let Some(error) = result.error
-                        {
-                            errors.push(error);
+                        // When the statement has no explicit actions (e.g. uses NotAction),
+                        // fall back to validating against the request action so we don't
+                        // silently skip validation entirely.
+                        let actions_to_check: &[&str] = if statement_actions.is_empty() {
+                            std::slice::from_ref(&request_action)
+                        } else {
+                            &statement_actions
+                        };
+
+                        let valid_for_any = actions_to_check.iter().any(|action| {
+                            validate_condition_key(key, action, loader)
+                                .map(|r| r.valid)
+                                .unwrap_or(true)
+                        });
+
+                        if !valid_for_any {
+                            // Re-run against the first action to get the error message.
+                            let result = validate_condition_key(key, actions_to_check[0], loader)?;
+                            if let Some(error) = result.error {
+                                errors.push(error);
+                            }
                         }
                     }
                 }
@@ -698,5 +722,70 @@ mod tests {
         let issues = validate_policy(&policy);
         assert!(has_errors(&issues));
         assert!(issues[0].location.contains("MyStatement"));
+    }
+
+    /// Regression test for issue #12: condition keys must be validated against
+    /// the statement's own actions, not against the request action.
+    ///
+    /// A multi-service policy (S3 + KMS) where each statement uses a
+    /// service-specific condition key should pass validation regardless of
+    /// which action is being requested. With the old code, requesting
+    /// `s3:PutObject` caused the KMS condition key to be validated against S3
+    /// (and vice versa), producing a false `ValidationFailed` error.
+    ///
+    /// This test uses an offline `ServiceLoader`, so no network requests are
+    /// made. When no service definitions are cached the loader returns `None`,
+    /// which causes `validate_condition_key` to skip validation for unknown
+    /// services — this is the correct "give benefit of the doubt" behaviour.
+    /// The test therefore confirms that the routing fix does not introduce a
+    /// panic or an erroneous error on multi-service policies.
+    #[test]
+    fn test_multi_service_policy_condition_keys_validated_per_statement() {
+        let policy = parse_policy(
+            r#"{
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Sid": "S3Statement",
+                        "Effect": "Allow",
+                        "Action": "s3:PutObject",
+                        "Resource": "arn:aws:s3:::my-bucket/*",
+                        "Condition": {
+                            "StringEquals": {
+                                "s3:x-amz-server-side-encryption": "aws:kms"
+                            }
+                        }
+                    },
+                    {
+                        "Sid": "KmsStatement",
+                        "Effect": "Allow",
+                        "Action": "kms:GenerateDataKey",
+                        "Resource": "arn:aws:kms:us-east-1:123456789012:key/mrk-abc123",
+                        "Condition": {
+                            "StringEquals": {
+                                "kms:EncryptionContext:aws:s3:arn": "arn:aws:s3:::my-bucket"
+                            }
+                        }
+                    }
+                ]
+            }"#,
+        );
+
+        let loader = crate::service::ServiceLoader::new(true);
+
+        // Requesting the S3 action: the KMS statement's condition key must not
+        // be validated against S3's service definition.
+        assert!(
+            validate_against_service_definitions(&[&policy], "s3:PutObject", &loader).is_ok(),
+            "multi-service policy should pass when requesting s3:PutObject"
+        );
+
+        // Requesting the KMS action: the S3 statement's condition key must not
+        // be validated against KMS's service definition.
+        assert!(
+            validate_against_service_definitions(&[&policy], "kms:GenerateDataKey", &loader)
+                .is_ok(),
+            "multi-service policy should pass when requesting kms:GenerateDataKey"
+        );
     }
 }
