@@ -954,13 +954,12 @@ fn test_cross_account_assume_role_with_saml() {
 
 #[test]
 fn test_cross_account_assume_role_case_insensitive() {
-    // Action names are case-insensitive in AWS
-    // STS:ASSUMEROLE should work the same as sts:AssumeRole
+    // Action names are case-insensitive in AWS. The trust-policy-only path
+    // applies to federated AssumeRoleWith* actions regardless of casing.
     let engine = EvaluationEngine::new();
     let ctx = RequestContext::builder()
-        .action("STS:ASSUMEROLE") // Uppercase
+        .action("STS:ASSUMEROLEWITHSAML") // Uppercase
         .resource("arn:aws:iam::222222222222:role/TestRole")
-        .principal_arn("arn:aws:iam::111111111111:user/alice")
         .principal_account("111111111111")
         .resource_account("222222222222")
         .cross_account(true)
@@ -971,10 +970,8 @@ fn test_cross_account_assume_role_case_insensitive() {
         r#"{
             "Statement": [{
                 "Effect": "Allow",
-                "Principal": {
-                    "AWS": "arn:aws:iam::111111111111:root"
-                },
-                "Action": "sts:AssumeRole",
+                "Principal": "*",
+                "Action": "sts:AssumeRoleWithSAML",
                 "Resource": "*"
             }]
         }"#,
@@ -993,8 +990,8 @@ fn test_cross_account_assume_role_case_insensitive() {
 
 #[test]
 fn test_cross_account_assume_role_explicit_deny_in_identity() {
-    // Even though trust policy alone can grant AssumeRole access,
-    // an explicit deny in any policy still blocks
+    // An explicit deny in any policy blocks cross-account sts:AssumeRole,
+    // even when a trust policy would otherwise contribute to an allow.
     let engine = EvaluationEngine::new();
     let ctx = RequestContext::builder()
         .action("sts:AssumeRole")
@@ -1815,5 +1812,58 @@ fn test_for_all_values_string_equals_denies_extra_tags() {
 
     let result = engine.evaluate(&ctx, &policies);
     // "UnauthorizedTag" is NOT in ["Environment", "CostCenter"], so ForAllValues:StringEquals fails
+    assert_eq!(result.decision, Decision::ImplicitDeny);
+}
+
+/// Regression test for issue #16: explicit_tag_keys populates aws:TagKeys so that
+/// ForAllValues:StringEquals on aws:TagKeys evaluates correctly even when no tag
+/// values are present in the eval context (tag_keys only, no request tags).
+#[test]
+fn test_explicit_tag_keys_satisfies_for_all_values_condition() {
+    let engine = EvaluationEngine::new();
+    let policy = load_policy("tests/fixtures/conditions/tag-keys-for-all-values.json");
+
+    // Exact match: the keys in the request match exactly those in the policy condition
+    let ctx = RequestContext::builder()
+        .action("ec2:CreateTags")
+        .resource("arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0")
+        .principal_arn("arn:aws:iam::123456789012:user/alice")
+        .explicit_tag_keys(vec!["CostCenter", "Project"])
+        .build()
+        .unwrap();
+
+    let policies = PolicySet {
+        identity_policies: vec![policy],
+        ..Default::default()
+    };
+
+    let result = engine.evaluate(&ctx, &policies);
+    // CostCenter and Project are both in [CostCenter, Project], so ForAllValues passes
+    assert_eq!(result.decision, Decision::Allow);
+}
+
+/// Regression test for issue #16: explicit_tag_keys with a key NOT in the allowed set
+/// should cause ForAllValues:StringEquals to fail.
+#[test]
+fn test_explicit_tag_keys_extra_key_fails_for_all_values() {
+    let engine = EvaluationEngine::new();
+    let policy = load_policy("tests/fixtures/conditions/tag-keys-for-all-values.json");
+
+    // "Env" is NOT in the policy's allowed set [CostCenter, Project]
+    let ctx = RequestContext::builder()
+        .action("ec2:CreateTags")
+        .resource("arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0")
+        .principal_arn("arn:aws:iam::123456789012:user/alice")
+        .explicit_tag_keys(vec!["CostCenter", "Env"])
+        .build()
+        .unwrap();
+
+    let policies = PolicySet {
+        identity_policies: vec![policy],
+        ..Default::default()
+    };
+
+    let result = engine.evaluate(&ctx, &policies);
+    // "Env" is not in [CostCenter, Project], so ForAllValues:StringEquals fails
     assert_eq!(result.decision, Decision::ImplicitDeny);
 }
