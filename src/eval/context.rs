@@ -144,8 +144,9 @@ impl RequestContext {
 
     /// Get a context key value.
     pub fn get_context_key(&self, key: &str) -> Option<&Vec<String>> {
-        // Normalize key to lowercase for lookup
-        let normalized = key.to_lowercase();
+        // Match the storage normalization used by `context_key`/`context_key_multi`
+        // so case-sensitive tag keys (e.g. `aws:PrincipalTag/Department`) round-trip.
+        let normalized = normalize_context_key(key);
         self.context_keys.get(&normalized)
     }
 
@@ -234,6 +235,22 @@ fn strip_prefix_case_insensitive<'a>(s: &'a str, prefix: &str) -> Option<&'a str
     } else {
         None
     }
+}
+
+/// Normalize a context key for storage.
+///
+/// For tag keys (`aws:PrincipalTag/*`, `aws:ResourceTag/*`, `aws:RequestTag/*`), lowercases
+/// only the prefix and preserves the tag key portion, because AWS treats tag keys as
+/// case-sensitive. All other keys are fully lowercased.
+fn normalize_context_key(key: &str) -> String {
+    // These prefixes are stored fully lowercased; the tag key portion after '/' is case-sensitive.
+    const TAG_PREFIXES: &[&str] = &["aws:principaltag/", "aws:resourcetag/", "aws:requesttag/"];
+    for prefix in TAG_PREFIXES {
+        if let Some(rest) = strip_prefix_case_insensitive(key, prefix) {
+            return format!("{}{}", prefix, rest);
+        }
+    }
+    key.to_lowercase()
 }
 
 /// Builder for RequestContext.
@@ -738,20 +755,28 @@ impl RequestContextBuilder {
     /// Add a context key with a single value.
     ///
     /// This also adds the key to the appropriate context bag based on the key prefix.
+    ///
+    /// Tag keys (`aws:PrincipalTag/*`, `aws:ResourceTag/*`, `aws:RequestTag/*`) are stored
+    /// with the prefix lowercased and the tag key portion preserved as-is, because AWS
+    /// treats tag keys as case-sensitive.
     pub fn context_key(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         let key_str = key.into();
         let val_str = value.into();
-        let lower_key = key_str.to_lowercase();
+        let normalized_key = normalize_context_key(&key_str);
         self.context_keys
-            .entry(lower_key.clone())
+            .entry(normalized_key.clone())
             .or_default()
             .push(val_str.clone());
         // Also add to appropriate bag
-        self.add_to_bag(&lower_key, ConditionValue::String(val_str));
+        self.add_to_bag(&normalized_key, ConditionValue::String(val_str));
         self
     }
 
     /// Add a context key with multiple values.
+    ///
+    /// Tag keys (`aws:PrincipalTag/*`, `aws:ResourceTag/*`, `aws:RequestTag/*`) are stored
+    /// with the prefix lowercased and the tag key portion preserved as-is, because AWS
+    /// treats tag keys as case-sensitive.
     pub fn context_key_multi(
         mut self,
         key: impl Into<String>,
@@ -759,11 +784,11 @@ impl RequestContextBuilder {
     ) -> Self {
         let key_str = key.into();
         let vals: Vec<String> = values.into_iter().map(|v| v.into()).collect();
-        let lower_key = key_str.to_lowercase();
-        let entry = self.context_keys.entry(lower_key.clone()).or_default();
+        let normalized_key = normalize_context_key(&key_str);
+        let entry = self.context_keys.entry(normalized_key.clone()).or_default();
         entry.extend(vals.clone());
         // Also add to appropriate bag
-        self.add_to_bag(&lower_key, ConditionValue::StringList(vals));
+        self.add_to_bag(&normalized_key, ConditionValue::StringList(vals));
         self
     }
 
@@ -1620,5 +1645,138 @@ mod tests {
         assert_eq!(ctx.principal_account, Some("123456789012".to_string()));
         assert_eq!(ctx.resource_account, Some("123456789012".to_string()));
         assert!(!ctx.is_cross_account);
+    }
+
+    // =========================================================================
+    // Regression tests for issue #14: context_key() tag-key case preservation
+    // =========================================================================
+
+    #[test]
+    fn test_context_key_principal_tag_preserves_case() {
+        // Regression test for #14: context_key() must preserve case of tag key portion.
+        let ctx = RequestContext::builder()
+            .action("s3:GetObject")
+            .resource("arn:aws:s3:::bucket/key")
+            .context_key("aws:PrincipalTag/Department", "Engineering")
+            .build()
+            .unwrap();
+
+        assert_eq!(
+            ctx.get_condition_value("aws:PrincipalTag/Department"),
+            Some(vec!["Engineering".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_context_key_resource_tag_preserves_case() {
+        let ctx = RequestContext::builder()
+            .action("s3:GetObject")
+            .resource("arn:aws:s3:::bucket/key")
+            .context_key("aws:ResourceTag/Environment", "Production")
+            .build()
+            .unwrap();
+
+        assert_eq!(
+            ctx.get_condition_value("aws:ResourceTag/Environment"),
+            Some(vec!["Production".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_context_key_request_tag_preserves_case() {
+        let ctx = RequestContext::builder()
+            .action("ec2:RunInstances")
+            .resource("arn:aws:ec2:us-east-1:123456789012:instance/*")
+            .context_key("aws:RequestTag/CostCenter", "12345")
+            .build()
+            .unwrap();
+
+        assert_eq!(
+            ctx.get_condition_value("aws:RequestTag/CostCenter"),
+            Some(vec!["12345".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_context_key_tag_prefix_case_insensitive() {
+        // The aws:*Tag/ prefix is case-insensitive; only the tag key portion is preserved.
+        let ctx = RequestContext::builder()
+            .action("s3:GetObject")
+            .resource("arn:aws:s3:::bucket/key")
+            .context_key("AWS:PrincipalTag/MyTag", "val")
+            .build()
+            .unwrap();
+
+        assert_eq!(
+            ctx.get_condition_value("aws:PrincipalTag/MyTag"),
+            Some(vec!["val".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_context_key_multi_tag_preserves_case() {
+        let ctx = RequestContext::builder()
+            .action("s3:PutObject")
+            .resource("arn:aws:s3:::bucket/key")
+            .context_key_multi("aws:RequestTag/Teams", vec!["alpha", "beta"])
+            .build()
+            .unwrap();
+
+        assert_eq!(
+            ctx.get_condition_value("aws:RequestTag/Teams"),
+            Some(vec!["alpha".to_string(), "beta".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_context_key_non_tag_still_lowercased() {
+        // Non-tag keys must still be fully lowercased (existing behaviour).
+        let ctx = RequestContext::builder()
+            .action("s3:GetObject")
+            .resource("arn:aws:s3:::bucket/key")
+            .context_key("s3:x-amz-server-side-encryption", "AES256")
+            .build()
+            .unwrap();
+
+        assert_eq!(
+            ctx.get_condition_value("s3:x-amz-server-side-encryption"),
+            Some(vec!["AES256".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_get_context_key_tag_round_trip() {
+        // get_context_key must use the same normalization as context_key/context_key_multi
+        // so case-sensitive tag-key portions round-trip.
+        let ctx = RequestContext::builder()
+            .action("s3:GetObject")
+            .resource("arn:aws:s3:::bucket/key")
+            .context_key("aws:PrincipalTag/Department", "Engineering")
+            .context_key("aws:RequestTag/Project", "Phoenix")
+            .build()
+            .unwrap();
+
+        assert_eq!(
+            ctx.get_context_key("aws:PrincipalTag/Department"),
+            Some(&vec!["Engineering".to_string()])
+        );
+        // Prefix lookups are case-insensitive; tag-key portion is case-sensitive.
+        assert_eq!(
+            ctx.get_context_key("AWS:PrincipalTag/Department"),
+            Some(&vec!["Engineering".to_string()])
+        );
+        assert_eq!(
+            ctx.get_context_key("aws:principaltag/Department"),
+            Some(&vec!["Engineering".to_string()])
+        );
+        assert_eq!(
+            ctx.get_context_key("aws:PrincipalTag/department"),
+            None,
+            "tag key portion is case-sensitive"
+        );
+        assert_eq!(
+            ctx.get_context_key("aws:RequestTag/Project"),
+            Some(&vec!["Phoenix".to_string()])
+        );
     }
 }
