@@ -144,8 +144,9 @@ impl RequestContext {
 
     /// Get a context key value.
     pub fn get_context_key(&self, key: &str) -> Option<&Vec<String>> {
-        // Normalize key to lowercase for lookup
-        let normalized = key.to_lowercase();
+        // Match the storage normalization used by `context_key`/`context_key_multi`
+        // so case-sensitive tag keys (e.g. `aws:PrincipalTag/Department`) round-trip.
+        let normalized = normalize_context_key(key);
         self.context_keys.get(&normalized)
     }
 
@@ -1740,6 +1741,42 @@ mod tests {
         assert_eq!(
             ctx.get_condition_value("s3:x-amz-server-side-encryption"),
             Some(vec!["AES256".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_get_context_key_tag_round_trip() {
+        // get_context_key must use the same normalization as context_key/context_key_multi
+        // so case-sensitive tag-key portions round-trip.
+        let ctx = RequestContext::builder()
+            .action("s3:GetObject")
+            .resource("arn:aws:s3:::bucket/key")
+            .context_key("aws:PrincipalTag/Department", "Engineering")
+            .context_key("aws:RequestTag/Project", "Phoenix")
+            .build()
+            .unwrap();
+
+        assert_eq!(
+            ctx.get_context_key("aws:PrincipalTag/Department"),
+            Some(&vec!["Engineering".to_string()])
+        );
+        // Prefix lookups are case-insensitive; tag-key portion is case-sensitive.
+        assert_eq!(
+            ctx.get_context_key("AWS:PrincipalTag/Department"),
+            Some(&vec!["Engineering".to_string()])
+        );
+        assert_eq!(
+            ctx.get_context_key("aws:principaltag/Department"),
+            Some(&vec!["Engineering".to_string()])
+        );
+        assert_eq!(
+            ctx.get_context_key("aws:PrincipalTag/department"),
+            None,
+            "tag key portion is case-sensitive"
+        );
+        assert_eq!(
+            ctx.get_context_key("aws:RequestTag/Project"),
+            Some(&vec!["Phoenix".to_string()])
         );
     }
 }
