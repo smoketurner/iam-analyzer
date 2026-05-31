@@ -486,8 +486,8 @@ fn principal_type_matches(
             }
             "SERVICE" => {
                 // Service principals like "s3.amazonaws.com"
-                if let Some(ctx_service) = context.get_context_key("aws:principalservicename") {
-                    for svc in ctx_service {
+                if let Some(ctx_service) = context.get_condition_value("aws:principalservicename") {
+                    for svc in &ctx_service {
                         if glob_match(value, svc) {
                             return Ok(true);
                         }
@@ -496,8 +496,8 @@ fn principal_type_matches(
             }
             "FEDERATED" => {
                 // Federated identity providers
-                if let Some(ctx_fed) = context.get_context_key("aws:federatedprovider") {
-                    for fed in ctx_fed {
+                if let Some(ctx_fed) = context.get_condition_value("aws:federatedprovider") {
+                    for fed in &ctx_fed {
                         if glob_match(value, fed) {
                             return Ok(true);
                         }
@@ -1184,6 +1184,62 @@ mod tests {
             .action("sts:AssumeRole")
             .resource("arn:aws:iam::123456789012:role/EC2Role")
             .context_key("aws:principalservicename", "ec2.amazonaws.com")
+            .build()
+            .unwrap();
+        let result = statement_matches(&policy.statement[0], &ctx).unwrap();
+        assert!(result.matches);
+    }
+
+    /// Service principal match using context-bag builder method.
+    /// Regression for issue #13: `principal_service_name()` writes only to the
+    /// principal context bag, so matchers must read via `get_condition_value`.
+    #[test]
+    fn test_service_principal_via_builder_method() {
+        let policy = parse_policy(
+            r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": {
+                    "Service": "lambda.amazonaws.com"
+                },
+                "Action": "sts:AssumeRole",
+                "Resource": "*"
+            }]
+        }"#,
+        );
+
+        let ctx = RequestContext::builder()
+            .action("sts:AssumeRole")
+            .resource("arn:aws:iam::123456789012:role/LambdaRole")
+            .principal_service_name("lambda.amazonaws.com")
+            .build()
+            .unwrap();
+        let result = statement_matches(&policy.statement[0], &ctx).unwrap();
+        assert!(result.matches);
+    }
+
+    /// Federated principal match using context-bag builder method.
+    /// Regression for issue #13: `federated_provider()` writes only to the
+    /// session context bag, so matchers must read via `get_condition_value`.
+    #[test]
+    fn test_federated_principal_via_builder_method() {
+        let policy = parse_policy(
+            r#"{
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": {
+                    "Federated": "cognito-identity.amazonaws.com"
+                },
+                "Action": "sts:AssumeRoleWithWebIdentity",
+                "Resource": "*"
+            }]
+        }"#,
+        );
+
+        let ctx = RequestContext::builder()
+            .action("sts:AssumeRoleWithWebIdentity")
+            .resource("arn:aws:iam::123456789012:role/CognitoRole")
+            .federated_provider("cognito-identity.amazonaws.com")
             .build()
             .unwrap();
         let result = statement_matches(&policy.statement[0], &ctx).unwrap();
