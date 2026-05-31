@@ -149,51 +149,56 @@ impl std::str::FromStr for ArnPattern {
 /// - `*` - matches zero or more characters
 /// - `?` - matches exactly one character
 ///
-/// This is a simple recursive implementation without regex.
+/// Uses an iterative two-pointer algorithm to avoid the O(2^n) blowup of
+/// naive recursive backtracking on adversarial patterns like `*a*a*a*...*X`.
 pub fn glob_match(pattern: &str, text: &str) -> bool {
     let pattern: Vec<char> = pattern.chars().collect();
     let text: Vec<char> = text.chars().collect();
-    glob_match_impl(&pattern, &text)
+    glob_match_iterative(&pattern, &text)
 }
 
-fn glob_match_impl(pattern: &[char], text: &[char]) -> bool {
-    match (pattern.first(), text.first()) {
-        // Both empty - match
-        (None, None) => true,
-        // Pattern empty but text remains - no match
-        (None, Some(_)) => false,
-        // Pattern has * - try matching zero or more characters
-        (Some('*'), _) => {
-            // Skip consecutive *s
-            let mut p = pattern;
-            while p.first() == Some(&'*') {
-                p = &p[1..];
-            }
-            // If pattern is exhausted after *s, match everything
-            if p.is_empty() {
-                return true;
-            }
-            // Try matching * as zero characters, then one, then two, etc.
-            let mut t = text;
-            loop {
-                if glob_match_impl(p, t) {
-                    return true;
-                }
-                if t.is_empty() {
-                    return false;
-                }
-                t = &t[1..];
-            }
+/// Iterative two-pointer glob matcher.
+///
+/// Tracks the position of the last `*` in the pattern (`star_pat`) and the
+/// text position at the time that `*` was consumed (`star_txt`).  When a
+/// mismatch occurs we backtrack only to those two saved positions, advancing
+/// `star_txt` by one — equivalent to letting the last `*` absorb one more
+/// character.  This gives O(|pattern| * |text|) worst-case (two-pass) rather
+/// than O(2^n) for pathological inputs.
+fn glob_match_iterative(pattern: &[char], text: &[char]) -> bool {
+    let mut pi = 0usize; // pattern index
+    let mut ti = 0usize; // text index
+    let mut star_pat: Option<usize> = None; // index of last '*' in pattern
+    let mut star_txt = 0usize; // text index when '*' was seen
+
+    while ti < text.len() {
+        if pi < pattern.len() && (pattern[pi] == '?' || pattern[pi] == text[ti]) {
+            // Direct match or '?' wildcard: advance both pointers.
+            pi += 1;
+            ti += 1;
+        } else if pi < pattern.len() && pattern[pi] == '*' {
+            // '*' can match zero or more characters; record this position and
+            // try matching zero characters first (do not advance ti yet).
+            star_pat = Some(pi);
+            star_txt = ti;
+            pi += 1;
+        } else if let Some(sp) = star_pat {
+            // Mismatch — backtrack: let the previously seen '*' consume one
+            // more text character and retry from just after that '*'.
+            star_txt += 1;
+            ti = star_txt;
+            pi = sp + 1;
+        } else {
+            return false;
         }
-        // Pattern has ? - match exactly one character
-        (Some('?'), Some(_)) => glob_match_impl(&pattern[1..], &text[1..]),
-        // Pattern has ? but text is empty - no match
-        (Some('?'), None) => false,
-        // Literal character match
-        (Some(p), Some(t)) if *p == *t => glob_match_impl(&pattern[1..], &text[1..]),
-        // Literal character mismatch
-        _ => false,
     }
+
+    // Consume any trailing '*'s in the pattern (they match the empty suffix).
+    while pi < pattern.len() && pattern[pi] == '*' {
+        pi += 1;
+    }
+
+    pi == pattern.len()
 }
 
 #[cfg(test)]
@@ -441,6 +446,26 @@ mod tests {
         assert!(pattern.matches_str("arn:aws:s3:::bucket-1"));
         assert!(!pattern.matches_str("arn:aws:s3:::bucket-ab"));
         assert!(!pattern.matches_str("arn:aws:s3:::bucket-"));
+    }
+
+    #[test]
+    fn test_glob_no_exponential_blowup() {
+        // Regression test for issue #10: a pattern with many interleaved '*a*'
+        // segments against a long string of 'a's (that cannot match) must
+        // complete in well under 100 ms with the iterative algorithm.
+        //
+        // The recursive implementation took ~11 seconds on 35 characters.
+        let pattern = "*a*a*a*a*a*a*a*a*a*a*a*X";
+        let text = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"; // 35 a's
+        let start = std::time::Instant::now();
+        let result = glob_match(pattern, text);
+        let elapsed = start.elapsed();
+        assert!(!result, "pattern should not match text without trailing X");
+        assert!(
+            elapsed.as_millis() < 100,
+            "glob_match took {}ms — likely exponential backtracking",
+            elapsed.as_millis()
+        );
     }
 
     #[test]
