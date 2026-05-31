@@ -346,13 +346,21 @@ pub fn statement_matches(statement: &Statement, context: &RequestContext) -> Res
 }
 
 /// Check if the action block matches the request action.
+///
+/// For the `"*"` wildcard shortcut, the request action must still be a valid
+/// `service:action` string. This mirrors `ActionPattern::matches`, which parses
+/// the request action and returns `false` for malformed strings.
 fn action_matches(action_block: &ActionBlock, request_action: &str) -> Result<bool> {
     let patterns = action_block.to_vec();
 
     for pattern_str in patterns {
-        // Handle "*" wildcard
+        // Handle "*" wildcard — but only for well-formed `service:action` strings.
+        // Delegating to ActionPattern::parse ensures consistent validation: the
+        // parse call fails for anything without exactly one colon and non-empty
+        // parts on both sides, so malformed actions are rejected here just as
+        // they are in the non-wildcard path below.
         if pattern_str == "*" {
-            return Ok(true);
+            return Ok(ActionPattern::parse(request_action).is_ok());
         }
 
         // Parse and match
@@ -628,6 +636,19 @@ mod tests {
         let action_block = ActionBlock::Single("*".to_string());
         assert!(action_matches(&action_block, "s3:GetObject").unwrap());
         assert!(action_matches(&action_block, "ec2:RunInstances").unwrap());
+    }
+
+    #[test]
+    fn test_action_wildcard_with_invalid_format() {
+        let action_block = ActionBlock::Single("*".to_string());
+
+        // Valid actions should match
+        assert!(action_matches(&action_block, "s3:GetObject").unwrap());
+        assert!(action_matches(&action_block, "custom:MyAction").unwrap());
+        assert!(action_matches(&action_block, "s3:GetObjct").unwrap()); // typo but valid format
+
+        // Invalid format should NOT match
+        assert!(!action_matches(&action_block, "invalid").unwrap());
     }
 
     #[test]

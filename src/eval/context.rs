@@ -798,6 +798,7 @@ impl RequestContextBuilder {
     /// Add a request tag.
     ///
     /// Note: Tag keys are case-sensitive in AWS, so "CostCenter" != "costcenter".
+    /// Adding a request tag also updates `aws:TagKeys` to include the new key.
     pub fn request_tag(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         let k = key.into();
         let v = value.into();
@@ -809,6 +810,28 @@ impl RequestContextBuilder {
         let tag_keys = self.request_ctx.get_request_tag_keys();
         self.request_ctx
             .set("aws:tagkeys", ConditionValue::StringList(tag_keys));
+        self
+    }
+
+    /// Set explicit tag keys for `aws:TagKeys`.
+    ///
+    /// This merges the provided keys with any keys already derived from
+    /// [`request_tag`](Self::request_tag) calls. Duplicates are removed while
+    /// preserving original casing.
+    ///
+    /// Use this when the request declares which tag keys are being set (e.g. a
+    /// `CreateTags` call) without supplying tag values in the evaluation context.
+    pub fn explicit_tag_keys(mut self, keys: Vec<impl Into<String>>) -> Self {
+        let new_keys: Vec<String> = keys.into_iter().map(|k| k.into()).collect();
+        // Start from keys already derived from request tags in the bag
+        let mut merged = self.request_ctx.get_request_tag_keys();
+        for k in new_keys {
+            if !merged.contains(&k) {
+                merged.push(k);
+            }
+        }
+        self.request_ctx
+            .set("aws:tagkeys", ConditionValue::StringList(merged));
         self
     }
 
@@ -1529,6 +1552,59 @@ mod tests {
         assert_eq!(ctx.principal_account, Some("111111111111".to_string()));
         assert_eq!(ctx.resource_account, Some("222222222222".to_string()));
         assert!(ctx.is_cross_account);
+    }
+
+    #[test]
+    fn test_explicit_tag_keys_standalone() {
+        // tag_keys set without any request tags
+        let ctx = RequestContext::builder()
+            .action("ec2:CreateTags")
+            .resource("arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0")
+            .explicit_tag_keys(vec!["CostCenter", "Project"])
+            .build()
+            .unwrap();
+
+        let mut keys = ctx
+            .get_condition_value("aws:TagKeys")
+            .expect("aws:TagKeys should be set");
+        keys.sort();
+        assert_eq!(keys, vec!["CostCenter".to_string(), "Project".to_string()]);
+    }
+
+    #[test]
+    fn test_explicit_tag_keys_merged_with_request_tags() {
+        // explicit tag_keys should merge with keys already derived from request_tag()
+        let ctx = RequestContext::builder()
+            .action("ec2:CreateTags")
+            .resource("arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0")
+            .request_tag("CostCenter", "12345")
+            .explicit_tag_keys(vec!["Project"])
+            .build()
+            .unwrap();
+
+        let mut keys = ctx
+            .get_condition_value("aws:TagKeys")
+            .expect("aws:TagKeys should be set");
+        keys.sort();
+        assert_eq!(keys, vec!["CostCenter".to_string(), "Project".to_string()]);
+    }
+
+    #[test]
+    fn test_explicit_tag_keys_no_duplicates() {
+        // tag key present in both request_tag and explicit_tag_keys should appear once
+        let ctx = RequestContext::builder()
+            .action("ec2:CreateTags")
+            .resource("arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0")
+            .request_tag("CostCenter", "12345")
+            .explicit_tag_keys(vec!["CostCenter", "Project"])
+            .build()
+            .unwrap();
+
+        let mut keys = ctx
+            .get_condition_value("aws:TagKeys")
+            .expect("aws:TagKeys should be set");
+        keys.sort();
+        assert_eq!(keys, vec!["CostCenter".to_string(), "Project".to_string()]);
     }
 
     #[test]
