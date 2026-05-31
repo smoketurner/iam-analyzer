@@ -954,13 +954,12 @@ fn test_cross_account_assume_role_with_saml() {
 
 #[test]
 fn test_cross_account_assume_role_case_insensitive() {
-    // Action names are case-insensitive in AWS
-    // STS:ASSUMEROLE should work the same as sts:AssumeRole
+    // Action names are case-insensitive in AWS. The trust-policy-only path
+    // applies to federated AssumeRoleWith* actions regardless of casing.
     let engine = EvaluationEngine::new();
     let ctx = RequestContext::builder()
-        .action("STS:ASSUMEROLE") // Uppercase
+        .action("STS:ASSUMEROLEWITHSAML") // Uppercase
         .resource("arn:aws:iam::222222222222:role/TestRole")
-        .principal_arn("arn:aws:iam::111111111111:user/alice")
         .principal_account("111111111111")
         .resource_account("222222222222")
         .cross_account(true)
@@ -971,10 +970,8 @@ fn test_cross_account_assume_role_case_insensitive() {
         r#"{
             "Statement": [{
                 "Effect": "Allow",
-                "Principal": {
-                    "AWS": "arn:aws:iam::111111111111:root"
-                },
-                "Action": "sts:AssumeRole",
+                "Principal": "*",
+                "Action": "sts:AssumeRoleWithSAML",
                 "Resource": "*"
             }]
         }"#,
@@ -993,8 +990,8 @@ fn test_cross_account_assume_role_case_insensitive() {
 
 #[test]
 fn test_cross_account_assume_role_explicit_deny_in_identity() {
-    // Even though trust policy alone can grant AssumeRole access,
-    // an explicit deny in any policy still blocks
+    // An explicit deny in any policy blocks cross-account sts:AssumeRole,
+    // even when a trust policy would otherwise contribute to an allow.
     let engine = EvaluationEngine::new();
     let ctx = RequestContext::builder()
         .action("sts:AssumeRole")
