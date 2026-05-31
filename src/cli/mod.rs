@@ -800,7 +800,9 @@ fn apply_request_context(
                 builder = builder.request_tag(key, value);
             }
         }
-        // Note: tag_keys is automatically populated from request tags
+        if let Some(tag_keys) = &request.tag_keys {
+            builder = builder.explicit_tag_keys(tag_keys.clone());
+        }
     }
 
     // Apply custom/service-specific condition keys
@@ -980,4 +982,65 @@ fn generate_context_templates() {
     println!("\n---");
     println!("Copy the sections above into separate files.");
     println!("All fields are optional - only include what you need.");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use context_files::{RequestContext as ReqCtxSection, RequestContextFile as ReqCtxFile};
+    use std::collections::HashMap;
+
+    fn make_rcf_with_tag_keys(
+        tag_keys: Option<Vec<String>>,
+        tags: Option<HashMap<String, String>>,
+    ) -> ReqCtxFile {
+        ReqCtxFile {
+            request: Some(ReqCtxSection {
+                tag_keys,
+                tags,
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn test_apply_request_context_tag_keys_populated() {
+        // tag_keys from JSON are wired into aws:TagKeys on the eval context
+        let rcf = make_rcf_with_tag_keys(
+            Some(vec!["CostCenter".to_string(), "Project".to_string()]),
+            None,
+        );
+        let builder = RequestContext::builder()
+            .action("ec2:CreateTags")
+            .resource("arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0");
+
+        let built = apply_request_context(builder, &rcf).build().unwrap();
+
+        let mut keys = built
+            .get_condition_value("aws:TagKeys")
+            .expect("aws:TagKeys must be set when tag_keys is provided in JSON");
+        keys.sort();
+        assert_eq!(keys, vec!["CostCenter".to_string(), "Project".to_string()]);
+    }
+
+    #[test]
+    fn test_apply_request_context_tag_keys_merged_with_tags() {
+        // tag_keys in JSON must merge with keys auto-derived from the tags section
+        let mut tags = HashMap::new();
+        tags.insert("CostCenter".to_string(), "12345".to_string());
+
+        let rcf = make_rcf_with_tag_keys(Some(vec!["Project".to_string()]), Some(tags));
+        let builder = RequestContext::builder()
+            .action("ec2:CreateTags")
+            .resource("arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0");
+
+        let built = apply_request_context(builder, &rcf).build().unwrap();
+
+        let mut keys = built
+            .get_condition_value("aws:TagKeys")
+            .expect("aws:TagKeys must include both derived and explicit keys");
+        keys.sort();
+        assert_eq!(keys, vec!["CostCenter".to_string(), "Project".to_string()]);
+    }
 }
