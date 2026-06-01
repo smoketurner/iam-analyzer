@@ -209,7 +209,11 @@ The CLI uses three JSON context files to configure evaluation context:
     "region": "us-east-1",
     "secure_transport": true,
     "via_aws_service": false,
-    "called_via": ["athena.amazonaws.com"]
+    "called_via": ["athena.amazonaws.com"],
+    "tags": {
+      "CostCenter": "12345"
+    },
+    "tag_keys": ["CostCenter", "Project"]
   },
   "custom": {
     "iam:PassedToService": "lambda.amazonaws.com"

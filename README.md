@@ -228,7 +228,8 @@ Context files allow you to specify detailed evaluation context in JSON format.
     "called_via": ["athena.amazonaws.com"],
     "tags": {
       "CostCenter": "12345"
-    }
+    },
+    "tag_keys": ["CostCenter", "Project"]
   },
   "custom": {
     "iam:PassedToService": "lambda.amazonaws.com"
